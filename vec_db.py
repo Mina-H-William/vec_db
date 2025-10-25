@@ -1,8 +1,6 @@
-from operator import index
 from typing import Dict, List, Annotated
 import numpy as np
 import os
-import faiss
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
@@ -19,13 +17,11 @@ class VecDB:
             if os.path.exists(self.db_path):
                 os.remove(self.db_path)
             self.generate_database(db_size)
-        else:
-            self._build_index()
     
     def generate_database(self, size: int) -> None:
         rng = np.random.default_rng(DB_SEED_NUMBER)
-        self.vectors = rng.random((size, DIMENSION), dtype=np.float32)
-        # self._write_vectors_to_file(vectors)
+        vectors = rng.random((size, DIMENSION), dtype=np.float32)
+        self._write_vectors_to_file(vectors)
         self._build_index()
 
     def _write_vectors_to_file(self, vectors: np.ndarray) -> None:
@@ -57,28 +53,21 @@ class VecDB:
 
     def get_all_rows(self) -> np.ndarray:
         # Take care this load all the data in memory
-        # num_records = self._get_num_records()
-        # vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
-        # return np.array(vectors)
-        return self.vectors
-    
-    # def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-    #     scores = []
-    #     num_records = self._get_num_records()
-    #     # here we assume that the row number is the ID of each vector
-    #     for row_num in range(num_records):
-    #         vector = self.get_one_row(row_num)
-    #         score = self._cal_score(query, vector)
-    #         scores.append((score, row_num))
-    #     # here we assume that if two rows have the same score, return the lowest ID
-    #     scores = sorted(scores, reverse=True)[:top_k]
-    #     return [s[1] for s in scores]
+        num_records = self._get_num_records()
+        vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
+        return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        xq = query.astype(np.float32)
-        faiss.normalize_L2(xq)
-        _, indices = self.index.search(xq, k=top_k)
-        return indices[0].tolist()
+        scores = []
+        num_records = self._get_num_records()
+        # here we assume that the row number is the ID of each vector
+        for row_num in range(num_records):
+            vector = self.get_one_row(row_num)
+            score = self._cal_score(query, vector)
+            scores.append((score, row_num))
+        # here we assume that if two rows have the same score, return the lowest ID
+        scores = sorted(scores, reverse=True)[:top_k]
+        return [s[1] for s in scores]
     
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -89,14 +78,6 @@ class VecDB:
 
     def _build_index(self):
         # Placeholder for index building logic
-        self.nlist = 1000  # number of clusters
-        self.m = 10       # number of bytes per vector
-        self.bits = 8     # number of bits per sub-vector
-        self.nprobe = 100  # number of probe at query time
-        quantizer = faiss.IndexFlatL2(DIMENSION)
-        self.index = faiss.IndexIVFPQ(quantizer, DIMENSION, self.nlist, self.m, self.bits)
-        vectors = self.get_all_rows().astype(np.float32)
-        self.index.train(vectors)
-        self.index.add(vectors)
-        self.index.nprobe = self.nprobe
-        faiss.write_index(self.index, self.index_path)
+        pass
+
+

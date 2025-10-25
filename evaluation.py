@@ -5,8 +5,6 @@ import time
 from dataclasses import dataclass
 from typing import List
 
-import argparse
-
 @dataclass
 class Result:
     run_time: float
@@ -56,18 +54,7 @@ def eval(results: List[Result]):
 
 
 if __name__ == "__main__":
-     # Create argument parser
-    parser = argparse.ArgumentParser(description='Process some arguments.')
-    
-    # Add --size argument
-    parser.add_argument('--size', type=int, required=True, 
-                       help='Size parameter (required)')
-    
-    # Parse arguments
-    args = parser.parse_args()
-
-    db = VecDB(db_size = int(args.size * 10**6), database_file_path=f'saved_db_{args.size}m.dat',
-                index_file_path=f'index_{args.size}m.dat', new_db=True)
+    db = VecDB(db_size = 10**2)
 
     all_db = db.get_all_rows()
 
