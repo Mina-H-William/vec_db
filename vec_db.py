@@ -2,7 +2,6 @@ from operator import index
 from typing import Dict, List, Annotated
 import numpy as np
 import os
-import faiss
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
@@ -75,10 +74,7 @@ class VecDB:
     #     return [s[1] for s in scores]
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        xq = query.astype(np.float32)
-        faiss.normalize_L2(xq)
-        _, indices = self.index.search(xq, k=top_k)
-        return indices[0].tolist()
+        
     
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -89,14 +85,4 @@ class VecDB:
 
     def _build_index(self):
         # Placeholder for index building logic
-        self.nlist = 1000  # number of clusters
-        self.m = 10       # number of bytes per vector
-        self.bits = 8     # number of bits per sub-vector
-        self.nprobe = 100  # number of probe at query time
-        quantizer = faiss.IndexFlatL2(DIMENSION)
-        self.index = faiss.IndexIVFPQ(quantizer, DIMENSION, self.nlist, self.m, self.bits)
-        vectors = self.get_all_rows().astype(np.float32)
-        self.index.train(vectors)
-        self.index.add(vectors)
-        self.index.nprobe = self.nprobe
-        faiss.write_index(self.index, self.index_path)
+        
