@@ -17,9 +17,9 @@ class VecDB:
         self.index_path = index_file_path
         
         # LSH Parameters - tuned for 20M vectors
-        self.L = 8  # Number of hash tables
-        self.K = 16  # Bits per hash table
-        self.num_probes = 5  # Multi-probe LSH
+        self.L = 5  # Number of hash tables
+        self.K = 12  # Bits per hash table
+        self.num_probes = 4  # Multi-probe LSH
         self.LSH_SEED = 123  # Separate seed for LSH
         
         if new_db:
