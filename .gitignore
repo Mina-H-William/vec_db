@@ -1,4 +1,6 @@
 *.dat
-
+*.pdf
+*venv*
 __pycache__
-
+*.idx
+res
