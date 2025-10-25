@@ -88,15 +88,24 @@ class VecDB:
         return cosine_similarity
 
     def _build_index(self):
-        # Placeholder for index building logic
-        self.nlist = 1000  # number of clusters
-        self.m = 10       # number of bytes per vector
-        self.bits = 8     # number of bits per sub-vector
-        self.nprobe = 100  # number of probe at query time
-        quantizer = faiss.IndexFlatL2(DIMENSION)
+        # Configuration for IndexIVFPQ
+        self.nlist = 1000  # number of clusters (adjust based on dataset size)
+        self.m = 14        # CHANGED: 70/14 = 5 dimensions per subquantizer (better compression)
+        self.bits = 8      # number of bits per sub-vector
+        self.nprobe = 50   # REDUCED: start with lower nprobe for speed
+        
+        # Use IndexFlatIP (Inner Product) for cosine similarity
+        quantizer = faiss.IndexFlatIP(DIMENSION)
         self.index = faiss.IndexIVFPQ(quantizer, DIMENSION, self.nlist, self.m, self.bits)
+        
+        # Get vectors and NORMALIZE them for cosine similarity
         vectors = self.get_all_rows().astype(np.float32)
+        faiss.normalize_L2(vectors)  # CRITICAL: Normalize database vectors
+        
+        # Train and add vectors
         self.index.train(vectors)
         self.index.add(vectors)
         self.index.nprobe = self.nprobe
+        
+        # Save index
         faiss.write_index(self.index, self.index_path)
