@@ -72,4 +72,6 @@ if __name__ == "__main__":
     all_db = db.get_all_rows()
 
     res = run_queries(db, all_db, 5, 10)
-    print(eval(res))
+    score, retime_seconds = eval(res)
+    print(f"Average score: {score:.2f}")
+    print(f"Average time: {retime_seconds * 1000:.2f} ms")  # Convert to ms for display
