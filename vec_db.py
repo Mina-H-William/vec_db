@@ -75,7 +75,18 @@ class VecDB:
     #     return [s[1] for s in scores]
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
+        # Normalize the query vector
+        query = query.astype(np.float32)
+        query = query / np.linalg.norm(query)
         
+        # Set ef parameter
+        self.index.set_ef(min(200, top_k * 40))
+        
+        # Query the index
+        labels, distances = self.index.knn_query(query, k=top_k)
+        
+        # Return the vector IDs (labels)
+        return labels[0].tolist()
     
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -85,5 +96,35 @@ class VecDB:
         return cosine_similarity
 
     def _build_index(self):
-        # Placeholder for index building logic
+        # Get vectors
+        vectors = self.get_all_rows().astype(np.float32)
         
+        # Normalize vectors for cosine similarity
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        vectors = vectors / norms
+        
+        # Initialize HNSW index with cosine space
+        self.index = hnswlib.Index(space='cosine', dim=DIMENSION)
+        
+        # Set parameters
+        num_records = self._get_num_records()
+        
+        # Configure index with parameters
+        self.index.init_index(
+            max_elements=num_records + 10000,  # Allow room for future inserts
+            ef_construction=200,
+            M=32  # Higher than default (16) for better accuracy
+        )
+        
+        # Add all vectors to the index
+        print(f"Building HNSW index for {num_records} vectors...")
+        labels = np.arange(num_records)
+        self.index.add_items(vectors, labels)
+        
+        # Set default ef (query time parameter)
+        self.index.set_ef(100)
+        
+        # Save index to disk
+        self.index.save_index(self.index_path)
+        print(f"HNSW index built and saved to {self.index_path}")
+            
