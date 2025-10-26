@@ -24,8 +24,8 @@ class VecDB:
     
     def generate_database(self, size: int) -> None:
         rng = np.random.default_rng(DB_SEED_NUMBER)
-        self.vectors = rng.random((size, DIMENSION), dtype=np.float32)
-        # self._write_vectors_to_file(vectors)
+        vectors = rng.random((size, DIMENSION), dtype=np.float32)
+        self._write_vectors_to_file(vectors)
         self._build_index()
 
     def _write_vectors_to_file(self, vectors: np.ndarray) -> None:
@@ -57,10 +57,10 @@ class VecDB:
 
     def get_all_rows(self) -> np.ndarray:
         # Take care this load all the data in memory
-        # num_records = self._get_num_records()
-        # vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
-        # return np.array(vectors)
-        return self.vectors
+        num_records = self._get_num_records()
+        vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
+        return np.array(vectors)
+        # return self.vectors
     
     # def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
     #     scores = []
@@ -80,7 +80,7 @@ class VecDB:
         query = query / np.linalg.norm(query)
         
         # Set ef parameter
-        self.index.set_ef(min(200, top_k * 40))
+        self.index.set_ef(min(200, top_k * 40)) 
         
         # Query the index
         labels, distances = self.index.knn_query(query, k=top_k)
@@ -112,8 +112,8 @@ class VecDB:
         # Configure index with parameters
         self.index.init_index(
             max_elements=num_records + 10000,  # Allow room for future inserts
-            ef_construction=200,
-            M=32  # Higher than default (16) for better accuracy
+            ef_construction=100,
+            M=16  # Higher than default (16) for better accuracy
         )
         
         # Add all vectors to the index
