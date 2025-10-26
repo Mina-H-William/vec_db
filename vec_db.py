@@ -2,6 +2,7 @@ from operator import index
 from typing import Dict, List, Annotated
 import numpy as np
 import os
+import hnswlib
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
