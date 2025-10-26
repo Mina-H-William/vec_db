@@ -80,7 +80,7 @@ class VecDB:
         query = query / np.linalg.norm(query)
         
         # Set ef parameter
-        self.index.set_ef(min(200, top_k * 40)) 
+        self.index.set_ef(min(5, top_k * 40)) 
         
         # Query the index
         labels, distances = self.index.knn_query(query, k=top_k)
@@ -112,8 +112,8 @@ class VecDB:
         # Configure index with parameters
         self.index.init_index(
             max_elements=num_records + 10000,  # Allow room for future inserts
-            ef_construction=100,
-            M=16  # Higher than default (16) for better accuracy
+            ef_construction=50,
+            M=8  # Higher than default (16) for better accuracy
         )
         
         # Add all vectors to the index
@@ -122,7 +122,7 @@ class VecDB:
         self.index.add_items(vectors, labels)
         
         # Set default ef (query time parameter)
-        self.index.set_ef(100)
+        self.index.set_ef(5)
         
         # Save index to disk
         self.index.save_index(self.index_path)
