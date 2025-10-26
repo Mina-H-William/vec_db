@@ -2,7 +2,7 @@ from operator import index
 from typing import Dict, List, Annotated
 import numpy as np
 import os
-import faiss
+from IVF import BasicIVFIndexer, search, cal_score
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
@@ -24,8 +24,8 @@ class VecDB:
     
     def generate_database(self, size: int) -> None:
         rng = np.random.default_rng(DB_SEED_NUMBER)
-        self.vectors = rng.random((size, DIMENSION), dtype=np.float32)
-        # self._write_vectors_to_file(vectors)
+        vectors = rng.random((size, DIMENSION), dtype=np.float32)
+        self._write_vectors_to_file(vectors)
         self._build_index()
 
     def _write_vectors_to_file(self, vectors: np.ndarray) -> None:
@@ -57,10 +57,9 @@ class VecDB:
 
     def get_all_rows(self) -> np.ndarray:
         # Take care this load all the data in memory
-        # num_records = self._get_num_records()
-        # vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
-        # return np.array(vectors)
-        return self.vectors
+        num_records = self._get_num_records()
+        vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
+        return np.array(vectors)
     
     # def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
     #     scores = []
@@ -75,37 +74,13 @@ class VecDB:
     #     return [s[1] for s in scores]
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        xq = query.astype(np.float32)
-        faiss.normalize_L2(xq)
-        _, indices = self.index.search(xq, k=top_k)
-        return indices[0].tolist()
-    
-    def _cal_score(self, vec1, vec2):
-        dot_product = np.dot(vec1, vec2)
-        norm_vec1 = np.linalg.norm(vec1)
-        norm_vec2 = np.linalg.norm(vec2)
-        cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
-        return cosine_similarity
+        
+        return search(self.ivf, self, query[0], top_k)
 
     def _build_index(self):
-        # Configuration for IndexIVFPQ
-        self.nlist = 1000  # number of clusters (adjust based on dataset size)
-        self.m = 14        # CHANGED: 70/14 = 5 dimensions per subquantizer (better compression)
-        self.bits = 8      # number of bits per sub-vector
-        self.nprobe = 50   # REDUCED: start with lower nprobe for speed
-        
-        # Use IndexFlatIP (Inner Product) for cosine similarity
-        quantizer = faiss.IndexFlatIP(DIMENSION)
-        self.index = faiss.IndexIVFPQ(quantizer, DIMENSION, self.nlist, self.m, self.bits)
-        
-        # Get vectors and NORMALIZE them for cosine similarity
-        vectors = self.get_all_rows().astype(np.float32)
-        faiss.normalize_L2(vectors)  # CRITICAL: Normalize database vectors
-        
-        # Train and add vectors
-        self.index.train(vectors)
-        self.index.add(vectors)
-        self.index.nprobe = self.nprobe
-        
-        # Save index
-        faiss.write_index(self.index, self.index_path)
+        if os.path.exists(self.index_path):
+                os.remove(self.index_path)
+        self.ivf = BasicIVFIndexer()
+        vectors = self.get_all_rows()
+        self.ivf.Build(vectors)
+        self.ivf.write_index(self.index_path)
