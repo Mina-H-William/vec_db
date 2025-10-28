@@ -23,8 +23,8 @@ class BasicIVFIndexer:
         
         # Assign vectors to nearest centroids
         for i, vec in enumerate(vectors):
-            distances = np.linalg.norm(vec - self.centroids, axis=1)
-            nearest_centroid = np.argmin(distances)
+            scores = [cal_score(vec, centroid.astype(np.float32)) for centroid in self.centroids]
+            nearest_centroid = np.argmax(scores)
             self.vector_ids[nearest_centroid].append(i)
         
         print("IVF index built successfully.")
@@ -90,8 +90,8 @@ def cal_score(vec1, vec2):
 def search(IVF: BasicIVFIndexer, vec_db, query_vector, k=5):
     """Search for k nearest neighbors"""
     # Find nearest centroids to query
-    distances_to_centroids = np.linalg.norm(query_vector - IVF.centroids, axis=1)
-    nearest_centroid_indices = np.argsort(distances_to_centroids)[:IVF.n_probe]
+    scores_to_centroids = [cal_score(query_vector, centroid) for centroid in IVF.centroids]
+    nearest_centroid_indices = np.argsort(scores_to_centroids)[-IVF.n_probe:][::-1]
 
     # Search in selected clusters
     candidates = []
