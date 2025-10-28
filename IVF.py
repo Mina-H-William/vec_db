@@ -19,14 +19,14 @@ class BasicIVFIndexer:
             vector_ids = np.arange(len(vectors))
         
         # Normalize vectors to unit length
-        self.normalized_vectors = normalize(vectors, axis=1, norm='l2')
+        normalized_vectors = normalize(vectors, axis=1, norm='l2')
         
         # KMeans on normalized vectors = spherical k-means
-        self.kmeans = KMeans(n_clusters=self.n_clusters, random_state=0)
-        cluster_labels = self.kmeans.fit_predict(self.normalized_vectors)
+        kmeans = KMeans(n_clusters=self.n_clusters, random_state=0, n_init='auto')
+        cluster_labels = kmeans.fit_predict(normalized_vectors)
         
         # Centroids are already normalized directions
-        self.centroids = self.kmeans.cluster_centers_
+        self.centroids = kmeans.cluster_centers_
         
         # Organize vector IDs by cluster
         self.vector_ids = [[] for _ in range(self.n_clusters)]
