@@ -1,5 +1,7 @@
 import numpy as np
 import heapq
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import normalize
 
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
@@ -8,24 +10,28 @@ class BasicIVFIndexer:
         self.centroids = None
         self.vector_ids = None
         
-    def Build(self, vectors):
-        """K-means clustering"""
+    # Build function 
+    def Build(self, vectors, vector_ids=None):
+        """K-means clustering with cosine similarity (spherical k-means)"""
         print("Building IVF index...")
-
-        n_vectors, dim = vectors.shape
         
-        # Simple k-means initialization (random centroids)
-        centroid_indices = np.random.choice(n_vectors, self.n_clusters, replace=False)
-        self.centroids = vectors[centroid_indices].copy()
+        if vector_ids is None:
+            vector_ids = np.arange(len(vectors))
         
-        # Initialize inverted lists
+        # Normalize vectors to unit length
+        self.normalized_vectors = normalize(vectors, axis=1, norm='l2')
+        
+        # KMeans on normalized vectors = spherical k-means
+        self.kmeans = KMeans(n_clusters=self.n_clusters, random_state=0)
+        cluster_labels = self.kmeans.fit_predict(self.normalized_vectors)
+        
+        # Centroids are already normalized directions
+        self.centroids = self.kmeans.cluster_centers_
+        
+        # Organize vector IDs by cluster
         self.vector_ids = [[] for _ in range(self.n_clusters)]
-        
-        # Assign vectors to nearest centroids
-        for i, vec in enumerate(vectors):
-            scores = [cal_score(vec, centroid.astype(np.float32)) for centroid in self.centroids]
-            nearest_centroid = np.argmax(scores)
-            self.vector_ids[nearest_centroid].append(i)
+        for vector_id, cluster_idx in zip(vector_ids, cluster_labels):
+            self.vector_ids[cluster_idx].append(vector_id)
         
         print("IVF index built successfully.")
 

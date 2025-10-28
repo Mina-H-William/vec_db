@@ -12,13 +12,14 @@ class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = True, db_size = None) -> None:
         self.db_path = database_file_path
         self.index_path = index_file_path
+        self.db_size = db_size
         if new_db:
             if db_size is None:
                 raise ValueError("You need to provide the size of the database")
             # delete the old DB file if exists
             if os.path.exists(self.db_path):
                 os.remove(self.db_path)
-            self.generate_database(db_size)
+            self.generate_database(self.db_size)
         else:
             self._build_index()
     
@@ -80,7 +81,11 @@ class VecDB:
     def _build_index(self):
         if os.path.exists(self.index_path):
                 os.remove(self.index_path)
-        self.ivf = BasicIVFIndexer()
+        
+        n_clusters= self.db_size // 1000
+        n_probe= self.db_size // 10000
+
+        self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe)
         vectors = self.get_all_rows()
         self.ivf.Build(vectors)
         self.ivf.write_index(self.index_path)
