@@ -153,6 +153,9 @@ def search(IVF: BasicIVFIndexer, vec_db, query_vector, k=5):
     scores_to_centroids = [cal_score(query_vector, centroid) for centroid in IVF.centroids]
     nearest_centroid_indices = np.argsort(scores_to_centroids)[-IVF.n_probe:][::-1]
 
+    # Convert to list to ensure compatibility
+    nearest_centroid_indices = nearest_centroid_indices.tolist()
+
     # Search in selected clusters
     candidates = []
     for centroid_idx in nearest_centroid_indices:
