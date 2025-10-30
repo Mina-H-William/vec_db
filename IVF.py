@@ -140,11 +140,16 @@ class BasicIVFIndexer:
 ################################################################################
 
 def cal_score(vec1, vec2):
+    # Compute cosine similarity and return a plain Python float.
+    # Guard against zero norms to avoid division-by-zero and return 0.0 in that case.
     dot_product = np.dot(vec1, vec2)
     norm_vec1 = np.linalg.norm(vec1)
     norm_vec2 = np.linalg.norm(vec2)
-    cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
-    return cosine_similarity
+    denom = (norm_vec1 * norm_vec2)
+    if denom == 0 or np.isnan(denom):
+        return 0.0
+    # Convert to Python float to avoid numpy scalar/array comparison issues
+    return float(dot_product / denom)
 
 
 def search(IVF: BasicIVFIndexer, vec_db, query_vector, k=5):
@@ -162,9 +167,9 @@ def search(IVF: BasicIVFIndexer, vec_db, query_vector, k=5):
 
         for vec_id in cluster_ids:
             vec = vec_db.get_one_row(vec_id)
-            score = cal_score(query_vector, vec)
-
-            heap_item = (score, -vec_id)
+            # Ensure score is a Python float so heap comparisons use native types
+            score = float(cal_score(query_vector, vec))
+            heap_item = (score, int(-vec_id))
             
             if len(candidates) < k:
                 heapq.heappush(candidates, heap_item)
