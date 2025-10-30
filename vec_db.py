@@ -76,7 +76,7 @@ class VecDB:
     #     return [s[1] for s in scores]
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        
+
         return search(self.ivf, self, query[0], top_k)
 
     def _build_index(self):
