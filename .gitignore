@@ -4,3 +4,6 @@
 __pycache__
 *.idx
 res
+*.centroids
+*.clusters
+*.json
