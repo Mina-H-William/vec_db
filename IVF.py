@@ -49,6 +49,7 @@ class BasicIVFIndexer:
 
         # Save centroids
         self.centroids = mbk.cluster_centers_
+        self.centroids /= np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12
 
         # Assign labels in batches (predict on normalized batches)
         labels = np.empty(n_samples, dtype=np.int32)
@@ -101,9 +102,9 @@ def cal_score(vec1, vec2):
     # Compute cosine similarity and return a plain Python float.
     # Guard against zero norms to avoid division-by-zero and return 0.0 in that case.
     dot_product = np.dot(vec1, vec2)
-    norm_vec1 = np.linalg.norm(vec1)
-    norm_vec2 = np.linalg.norm(vec2)
-    return dot_product / (norm_vec1 * norm_vec2) 
+    # norm_vec1 = np.linalg.norm(vec1)
+    # norm_vec2 = np.linalg.norm(vec2)
+    return dot_product
 
 def load_centroids_batches(filename, batch_size=500):
     with open(filename, "rb") as f:
@@ -140,6 +141,7 @@ def load_cluster_ids(filename, cluster_index):
 
 def search(vec_db, query_vector, k=5, batch_size=500):
     filename = vec_db.index_path
+    query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
@@ -172,6 +174,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
         for vid in vec_ids:
             vec = vec_db.get_one_row(int(vid))
+            vec = vec / (np.linalg.norm(vec) + 1e-12)
             score = cal_score(query_vector, vec)
 
             item = (score, -vid)
