@@ -3,6 +3,7 @@
 __pycache__
 
 *.npz
+*.ivf
 
 log.txt
 
