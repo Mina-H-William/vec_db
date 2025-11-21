@@ -18,11 +18,9 @@ class VecDB:
                 raise ValueError("You need to provide the size of the database")
             # delete the old DB file if exists
             if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-            self.generate_database(self.db_size)
-        else:
-            # self._build_index()
-            self.ivf = BasicIVFIndexer.read_index(self.index_path)
+                self._build_index()
+            else:
+                self.generate_database(self.db_size)
     
     def generate_database(self, size: int) -> None:
         rng = np.random.default_rng(DB_SEED_NUMBER)
@@ -77,6 +75,8 @@ class VecDB:
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
 
+        self.ivf = BasicIVFIndexer.read_index(self.index_path)
+
         return search(self.ivf, self, query[0], top_k)
 
     def _build_index(self):
@@ -84,7 +84,7 @@ class VecDB:
                 os.remove(self.index_path)
         
         n_clusters= self.db_size // 1000
-        n_probe= 10 + (self.db_size // 1000000) * 2
+        n_probe= 10 + (self.db_size // 1_000_000) * 2
 
         self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe)
         vectors = self.get_all_rows()
