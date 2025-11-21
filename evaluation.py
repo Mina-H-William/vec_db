@@ -68,7 +68,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     db = VecDB(db_size = int(args.size * 10**6), database_file_path=f'saved_db_{args.size}M.dat',
-                index_file_path=f'index_{args.size}m.npz', new_db=False)
+                index_file_path=f'index_{args.size}m.ivf', new_db=True)
 
     # all_db = db.get_all_rows()
 

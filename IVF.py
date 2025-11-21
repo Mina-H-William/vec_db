@@ -1,4 +1,5 @@
 import numpy as np
+import struct
 import heapq
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
@@ -18,8 +19,7 @@ class BasicIVFIndexer:
         use MiniBatchKMeans and batch normalization to avoid full in-RAM copies.
         """
         print("Building IVF index...")
-        if vector_ids is None:
-            vector_ids = np.arange(len(vectors))
+        vector_ids = np.arange(len(vectors))
 
         n_samples = len(vectors)
 
@@ -74,53 +74,37 @@ class BasicIVFIndexer:
         return labels
 
 
+    def write_index(self, filename):
+        vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.int64)
+        vector_ids_flat = (
+            np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=np.int64)
+        )
 
-    def write_index(self, filename: str):
-        """
-        Save the IVF index to a file using numpy.savez
-        More efficient for large arrays
-        """
-        try:
-            # Convert list of lists to a format that numpy can save efficiently
-            vector_ids_lengths = [len(lst) for lst in self.vector_ids]
-            vector_ids_flat = np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=int)
-            
-            np.savez(filename,
-                    n_clusters=self.n_clusters,
-                    n_probe=self.n_probe,
-                    centroids=self.centroids,
-                    vector_ids_lengths=vector_ids_lengths,
-                    vector_ids_flat=vector_ids_flat)
-            print(f"Index successfully written to {filename}")
-        except Exception as e:
-            print(f"Error writing index to file: {e}")
+        with open(filename, "wb") as f:
+            # 1. Header
+            f.write(struct.pack("iii", self.n_clusters, self.n_probe, self.centroids.shape[1]))
 
-    @classmethod
-    def read_index(cls, filename: str):
-        """
-        Load the IVF index from a numpy .npz file
-        """
-        try:
-            data = np.load(filename, allow_pickle=True)
-            
-            indexer = cls(n_clusters=int(data['n_clusters']), n_probe=int(data['n_probe']))
-            indexer.centroids = data['centroids']
-            
-            # Reconstruct the list of lists from flat array
-            lengths = data['vector_ids_lengths']
-            flat = data['vector_ids_flat']
-            indexer.vector_ids = []
-            start = 0
-            for length in lengths:
-                indexer.vector_ids.append(flat[start:start+length].tolist())
-                start += length
-                
-            print(f"Index successfully loaded from {filename}")
-            return indexer
-        except Exception as e:
-            print(f"Error loading index from file: {e}")
-            return None
-    
+            # Reserve space for 3 offsets (written later)
+            f.write(b"\x00" * 8 * 3)
+
+            # 2. Write centroids
+            centroid_offset = f.tell()
+            f.write(self.centroids.astype(np.float32).tobytes())
+
+            # 3. Write lengths
+            lengths_offset = f.tell()
+            f.write(vector_ids_lengths.astype(np.int64).tobytes())
+
+            # 4. Write flat IDs
+            ids_offset = f.tell()
+            f.write(vector_ids_flat.astype(np.int64).tobytes())
+
+            # 5. Go back and write offsets into the header
+            f.seek(4 * 3)  # after n_clusters, n_probe, dim
+            f.write(struct.pack("qqq", centroid_offset, lengths_offset, ids_offset))
+
+        print("Index saved to", filename)
+
 
 ################################################################################
 
@@ -132,33 +116,84 @@ def cal_score(vec1, vec2):
     norm_vec2 = np.linalg.norm(vec2)
     return dot_product / (norm_vec1 * norm_vec2) 
 
+def load_centroids_batches(filename, batch_size=500):
+    with open(filename, "rb") as f:
+        n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
+        centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
 
-def search(IVF: BasicIVFIndexer, vec_db, query_vector, k=5):
-    """Search for k nearest neighbors"""
-    # Find nearest centroids to query
-    scores_to_centroids = [cal_score(query_vector, centroid) for centroid in IVF.centroids]
-    nearest_centroid_indices = np.argsort(scores_to_centroids)[-IVF.n_probe:][::-1]
+        f.seek(centroid_offset)
 
-    # Search in selected clusters
-    candidates = []
-    for centroid_idx in nearest_centroid_indices:
-        cluster_ids = IVF.vector_ids[centroid_idx]
+        for start in range(0, n_clusters, batch_size):
+            end = min(batch_size, n_clusters - start)
+            bytes_to_read = end * dim * 4  # float32 size
+            batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
+            yield start, batch.reshape(end, dim)
 
-        for vec_id in cluster_ids:
-            vec = vec_db.get_one_row(vec_id)
-            # Ensure score is a Python float so heap comparisons use native types
-            score = cal_score(query_vector, vec)
-            heap_item = (score, -vec_id)
-            
-            if len(candidates) < k:
-                heapq.heappush(candidates, heap_item)
+def load_cluster_ids(filename, cluster_index):
+    with open(filename, "rb") as f:
+        n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
+        centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
+
+        # Read all lengths (small array)
+        f.seek(lengths_offset)
+        lengths = np.frombuffer(f.read(n_clusters * 8), dtype=np.int64)
+
+        # Get offset of this cluster inside ids
+        start = lengths[:cluster_index].sum()
+        length = lengths[cluster_index]
+
+        # Read that slice only
+        f.seek(ids_offset + start * 8)
+        data = np.frombuffer(f.read(length * 8), dtype=np.int64)
+
+        return data
+
+
+def search(vec_db, query_vector, k=5, batch_size=500):
+    filename = vec_db.index_path
+
+    # ---- 1. Read header ----
+    with open(filename, "rb") as f:
+        n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
+
+    # Min-heap to store top n_probe centroids (score, centroid_index)
+    centroid_scores_heap = []
+
+    for start_idx, batch in load_centroids_batches(filename, batch_size):
+        # batch shape: (batch_size, dim)
+        for i, centroid in enumerate(batch):
+            score = cal_score(query_vector, centroid)
+            item = (score, start_idx + i)
+
+            if len(centroid_scores_heap) < n_probe:
+                heapq.heappush(centroid_scores_heap, item)
             else:
-                # Push if this score is higher than our current smallest in top-k
-                # OR if score equal but lower vec_id
-                if heap_item > candidates[0]:
-                    heapq.heappushpop(candidates, heap_item)
+                # pushpop ensures only top n_probe remain
+                if item > centroid_scores_heap[0]:
+                    heapq.heappushpop(centroid_scores_heap, item)
 
+    # After iterating all batches, extract the top n_probe centroid indices
+    selected_centroids = [cid for _, cid in centroid_scores_heap]
 
-    results = [(score, -vec_id) for score, vec_id in candidates]
-    results.sort(key=lambda x: (x[0], x[1]))  # Sort by score ascending, then ID ascending
-    return [idx for _, idx in results]
+    # ---- 4. Search actual vectors in selected clusters ----
+    candidates = []
+
+    for cid in selected_centroids:
+        vec_ids = load_cluster_ids(filename, cid)   # only this cluster's IDs
+
+        for vid in vec_ids:
+            vec = vec_db.get_one_row(int(vid))
+            score = cal_score(query_vector, vec)
+
+            item = (score, -vid)
+
+            if len(candidates) < k:
+                heapq.heappush(candidates, item)
+            else:
+                if item > candidates[0]:
+                    heapq.heappushpop(candidates, item)
+
+    # ---- 5. Final results ----
+    results = [(score, -vid) for score, vid in candidates]
+    results.sort(key=lambda x: (x[0], x[1]))  # sort by score then ID
+    return [vid for _, vid in results]

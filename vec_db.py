@@ -2,7 +2,7 @@ from operator import index
 from typing import Dict, List, Annotated
 import numpy as np
 import os
-from IVF import BasicIVFIndexer, search, cal_score
+from IVF import BasicIVFIndexer, search
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
@@ -61,23 +61,10 @@ class VecDB:
         vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
         return np.array(vectors)
     
-    # def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-    #     scores = []
-    #     num_records = self._get_num_records()
-    #     # here we assume that the row number is the ID of each vector
-    #     for row_num in range(num_records):
-    #         vector = self.get_one_row(row_num)
-    #         score = self._cal_score(query, vector)
-    #         scores.append((score, row_num))
-    #     # here we assume that if two rows have the same score, return the lowest ID
-    #     scores = sorted(scores, reverse=True)[:top_k]
-    #     return [s[1] for s in scores]
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
 
-        self.ivf = BasicIVFIndexer.read_index(self.index_path)
-
-        return search(self.ivf, self, query[0], top_k)
+        return search(self, query[0], top_k)
 
     def _build_index(self):
         if os.path.exists(self.index_path):
