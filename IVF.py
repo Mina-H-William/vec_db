@@ -11,7 +11,7 @@ class BasicIVFIndexer:
         self.centroids = None
         self.vector_ids = None
 
-    def Build(self, vectors, use_minibatch_threshold=1_000_000, batch_size=1_000_000):
+    def Build(self, vectors, batch_size=100_000):
         """
         vectors: array-like or memmap supporting slicing: vectors[start:end]
         vector_ids: optional sequence of ids
@@ -23,10 +23,7 @@ class BasicIVFIndexer:
 
         n_samples = len(vectors)
 
-        if n_samples >= use_minibatch_threshold:
-            labels = self.build_index_with_batchs(vectors, n_samples, batch_size)
-        else:
-            labels = self.build_index_without_batchs(vectors)
+        labels = self.build_index_with_batchs(vectors, n_samples, batch_size)
 
         # Build vector ID lists per cluster
         self.vector_ids = [[] for _ in range(self.n_clusters)]
@@ -42,6 +39,7 @@ class BasicIVFIndexer:
                                   n_init='auto')
         # Partial fit on normalized batches
         for start in range(0, n_samples, batch_size):
+            print(f"Processing batch {start} to {min(start + batch_size, n_samples)}")
             end = min(start + batch_size, n_samples)
             batch = vectors[start:end]
             # batch may be a view; normalize without creating a huge extra copy
@@ -55,21 +53,12 @@ class BasicIVFIndexer:
         # Assign labels in batches (predict on normalized batches)
         labels = np.empty(n_samples, dtype=np.int32)
         for start in range(0, n_samples, batch_size):
+            print(f"Assigning labels for batch {start} to {min(start + batch_size, n_samples)}")
             end = min(start + batch_size, n_samples)
             batch = vectors[start:end]
             norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
             batch_norm = batch / norms
             labels[start:end] = mbk.predict(batch_norm)
-
-        return labels
-
-
-    def build_index_without_batchs(self, vectors):
-        # Small dataset path: normalize whole array and run KMeans
-        normalized_vectors = normalize(vectors, axis=1, norm='l2')
-        kmeans = KMeans(n_clusters=self.n_clusters, random_state=0, n_init='auto')
-        labels = kmeans.fit_predict(normalized_vectors)
-        self.centroids = kmeans.cluster_centers_
 
         return labels
 
