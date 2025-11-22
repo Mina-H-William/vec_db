@@ -173,14 +173,11 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
-        # vecs = vec_db.get_rows(vec_ids)
+        vecs = vec_db.get_rows(vec_ids)
 
-        # vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
+        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-        # for vid, vec in zip(vec_ids, vecs):
-        for vid in vec_ids:
-            vec = vec_db.get_one_row(vid)
-            vec = vec / (np.linalg.norm(vec) + 1e-12)
+        for vid, vec in zip(vec_ids, vecs):
             score = cal_score(query_vector, vec)
 
             item = (score, -vid)
