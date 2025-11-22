@@ -168,24 +168,23 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
-    all_vec_ids = []
 
     for cid in selected_centroids:
-        all_vec_ids.extend(load_cluster_ids(filename, cid))
+        vec_ids = load_cluster_ids(filename, cid)
 
-    all_vec = vec_db.get_rows(all_vec_ids)
-    all_vec = all_vec / (np.linalg.norm(all_vec, axis=1, keepdims=True) + 1e-12)
+        vecs = vec_db.get_rows(vec_ids)
+        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-    for vid, vec in zip(all_vec_ids, all_vec):
-        score = cal_score(query_vector, vec)
+        for vid, vec in zip(vec_ids, vecs):
+            score = cal_score(query_vector, vec)
 
-        item = (score, -vid)
+            item = (score, -vid)
 
-        if len(candidates) < k:
-            heapq.heappush(candidates, item)
-        else:
-            if item > candidates[0]:
-                heapq.heappushpop(candidates, item)
+            if len(candidates) < k:
+                heapq.heappush(candidates, item)
+            else:
+                if item > candidates[0]:
+                    heapq.heappushpop(candidates, item)
 
     # ---- 5. Final results ----
     results = [(score, -vid) for score, vid in candidates]
