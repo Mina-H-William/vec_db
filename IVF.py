@@ -169,12 +169,9 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
-    all_vec_lengths = 0
 
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
-
-        all_vec_lengths += len(vec_ids)
 
         vecs = vec_db.get_rows(vec_ids)
 
@@ -191,9 +188,6 @@ def search(vec_db, query_vector, k=5, batch_size=500):
             else:
                 if item > candidates[0]:
                     heapq.heappushpop(candidates, item)
-
-    print(f"Total vectors compared: {all_vec_lengths}")
-    print("##################################################################")
 
     # ---- 5. Final results ----
     results = [(score, -vid) for score, vid in candidates]

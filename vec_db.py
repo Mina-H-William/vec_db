@@ -81,8 +81,8 @@ class VecDB:
     
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-
-        return search(self, query[0], top_k)
+        
+        return search(self, query.ravel(), top_k)
 
     def _build_index(self):
         if os.path.exists(self.index_path):
