@@ -3,6 +3,7 @@ import struct
 import heapq
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
+import gc
 
 DIMENSION = 70
 
@@ -164,6 +165,9 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # After iterating all batches, extract the top n_probe centroid indices
     selected_centroids = [cid for _, cid in centroid_scores_heap]
+    
+    del centroid_scores_heap
+    gc.collect()
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
