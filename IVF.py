@@ -178,7 +178,6 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
         for vid, vec in zip(vec_ids, vecs):
-            vec = vec / (np.linalg.norm(vec) + 1e-12)
             score = cal_score(query_vector, vec)
 
             item = (score, -vid)
