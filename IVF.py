@@ -174,8 +174,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         all_vec_ids.extend(load_cluster_ids(filename, cid))
 
     all_vec = vec_db.get_rows(all_vec_ids)
-    norms = np.linalg.norm(all_vec, axis=1, keepdims=True) + 1e-12
-    all_vec = all_vec / norms
+    all_vec = all_vec / (np.linalg.norm(all_vec, axis=1, keepdims=True) + 1e-12)
 
     for vid, vec in zip(all_vec_ids, all_vec):
         score = cal_score(query_vector, vec)
