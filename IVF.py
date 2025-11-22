@@ -106,11 +106,8 @@ def cal_score(vec1, vec2):
     # norm_vec2 = np.linalg.norm(vec2)
     return dot_product
 
-def load_centroids_batches(filename, batch_size=500):
+def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
     with open(filename, "rb") as f:
-        n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
-        centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
-
         f.seek(centroid_offset)
 
         for start in range(0, n_clusters, batch_size):
@@ -119,11 +116,8 @@ def load_centroids_batches(filename, batch_size=500):
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
             yield start, np.array(batch.reshape(end, dim))
 
-def load_cluster_ids(filename, cluster_index):
+def load_cluster_ids(filename, cluster_index, n_clusters, lengths_offset, ids_offset):
     with open(filename, "rb") as f:
-        n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
-        centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
-
         # Read all lengths (small array)
         f.seek(lengths_offset)
         lengths = np.frombuffer(f.read(n_clusters * 8), dtype=np.int64)
@@ -142,15 +136,18 @@ def load_cluster_ids(filename, cluster_index):
 def search(vec_db, query_vector, k=5, batch_size=500):
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
+    n_clusters, n_probe, dim = None, None, None
+    centroid_offset, lengths_offset, ids_offset = None, None, None
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
         n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
+        centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
 
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
-    for start_idx, batch in load_centroids_batches(filename, batch_size):
+    for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
         for i, centroid in enumerate(batch):
             score = cal_score(query_vector, centroid)
@@ -170,12 +167,15 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     candidates = []
 
     for cid in selected_centroids:
-        vec_ids = load_cluster_ids(filename, cid)
+        vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
-        vecs = vec_db.get_rows(vec_ids)
-        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
+        # vecs = vec_db.get_rows(vec_ids)
+        # vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-        for vid, vec in zip(vec_ids, vecs):
+        # for vid, vec in zip(vec_ids, vecs):
+        for vid in vec_ids:
+            vec = vec_db.get_one_row(vid)
+            vec = vec / (np.linalg.norm(vec) + 1e-12)
             score = cal_score(query_vector, vec)
 
             item = (score, -vid)
