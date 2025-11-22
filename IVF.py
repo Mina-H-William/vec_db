@@ -173,6 +173,8 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
 
+    print("second pass: searching vectors in selected clusters")
+
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
