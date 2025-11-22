@@ -167,16 +167,11 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
-    mmap_vectors = np.memmap(
-                vec_db.db_path,
-                dtype=np.float32,
-                mode='r'
-            ).reshape(-1, DIMENSION)
 
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
-        vecs = np.array(mmap_vectors[vec_ids])
+        vecs = vec_db.get_rows(vec_ids)
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
         for vid, vec in zip(vec_ids, vecs):
