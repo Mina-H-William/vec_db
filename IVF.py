@@ -147,6 +147,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
         centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
 
+    print("ssssss", n_clusters, n_probe, dim)
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
@@ -165,7 +166,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # After iterating all batches, extract the top n_probe centroid indices
     selected_centroids = [cid for _, cid in centroid_scores_heap]
-    
+
     del centroid_scores_heap
     gc.collect()
 

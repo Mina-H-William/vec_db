@@ -57,12 +57,14 @@ class VecDB:
         
     def get_rows(self, row_nums) -> np.ndarray:
         try:
+            num_records = self._get_num_records()
             # Create memmap for the whole file (does NOT load all data)
             mmap_vectors = np.memmap(
                 self.db_path,
                 dtype=np.float32,
-                mode='r'
-            ).reshape(-1, DIMENSION)
+                mode='r',
+                shape=(num_records, DIMENSION)
+            )
 
             # Vectorized retrieval (loads only required rows)
             return np.array(mmap_vectors[row_nums])
@@ -86,8 +88,8 @@ class VecDB:
         if os.path.exists(self.index_path):
                 os.remove(self.index_path)
         
-        n_clusters= self.db_size // 1000
-        n_probe= 10 + (self.db_size // 1_000_000)
+        n_clusters = self.db_size // 1000
+        n_probe = 10 + (self.db_size // 1000000) * 2
 
         self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe)
         vectors = self.get_all_rows()
