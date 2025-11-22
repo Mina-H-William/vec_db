@@ -117,7 +117,7 @@ def load_centroids_batches(filename, batch_size=500):
             end = min(batch_size, n_clusters - start)
             bytes_to_read = end * dim * 4  # float32 size
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-            yield start, batch.reshape(end, dim)
+            yield start, np.array(batch.reshape(end, dim))
 
 def load_cluster_ids(filename, cluster_index):
     with open(filename, "rb") as f:
@@ -136,7 +136,7 @@ def load_cluster_ids(filename, cluster_index):
         f.seek(ids_offset + start * 8)
         data = np.frombuffer(f.read(length * 8), dtype=np.int64)
 
-        return data
+        return np.array(data)
 
 
 def search(vec_db, query_vector, k=5, batch_size=500):
