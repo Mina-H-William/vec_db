@@ -53,7 +53,7 @@ class BasicIVFIndexer:
 
         # Save centroids
         self.centroids = mbk.cluster_centers_
-        self.centroids /= np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12
+        self.centroids /= (np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12)
 
         # Assign labels in batches (predict on normalized batches)
         labels = np.empty(n_samples, dtype=np.int32)
