@@ -4,6 +4,8 @@ import heapq
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 
+from vec_db import DIMENSION
+
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
         self.n_clusters = n_clusters
@@ -165,16 +167,19 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
+    mmap_vectors = np.memmap(
+                vec_db.db_path,
+                dtype=np.float32,
+                mode='r'
+            ).reshape(-1, DIMENSION)
 
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
-        # vecs = vec_db.get_rows(vec_ids)
-        # vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
+        vecs = np.array(mmap_vectors[vec_ids])
+        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-        # for vid, vec in zip(vec_ids, vecs):
-        for vid in vec_ids:
-            vec = vec_db.get_one_row(vid)
+        for vid, vec in zip(vec_ids, vecs):
             vec = vec / (np.linalg.norm(vec) + 1e-12)
             score = cal_score(query_vector, vec)
 
