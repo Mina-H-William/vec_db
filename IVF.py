@@ -169,7 +169,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
-    # len_all_vectors = 0
+    len_all_vectors = 0
 
     # tic = time.time()
 
