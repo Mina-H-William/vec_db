@@ -147,7 +147,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
         centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
 
-    print("ssssss", n_clusters, n_probe, dim)
+    n_probe = 5 + (vec_db.db_size // 1_000_000)
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
