@@ -4,7 +4,7 @@ import heapq
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 
-from vec_db import DIMENSION
+DIMENSION = 70
 
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
