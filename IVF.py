@@ -169,22 +169,22 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
-    len_all_vectors = 0
+    # len_all_vectors = 0
 
-    tic = time.time()
+    # tic = time.time()
 
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
         len_all_vectors += len(vec_ids)
-        print(f"Searching in cluster {cid} with {len(vec_ids)} vectors")
+        # print(f"Searching in cluster {cid} with {len(vec_ids)} vectors")
 
-        new_tic = time.time()
+        # new_tic = time.time()
 
         vecs = vec_db.get_rows(vec_ids)
 
-        new_toc = time.time()
-        print(f"Time to load vectors for cluster {cid}: {new_toc - new_tic:.4f} seconds")
+        # new_toc = time.time()
+        # print(f"Time to load vectors for cluster {cid}: {new_toc - new_tic:.4f} seconds")
 
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
@@ -200,8 +200,8 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                 if item > candidates[0]:
                     heapq.heappushpop(candidates, item)
 
-    toc = time.time()
-    print(f"Time to search vectors in selected clusters: {toc - tic:.4f} seconds")
+    # toc = time.time()
+    # print(f"Time to search vectors in selected clusters: {toc - tic:.4f} seconds")
     print(f"Total vectors searched: {len_all_vectors}")
     print('###############################################')
 
