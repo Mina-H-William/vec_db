@@ -150,7 +150,6 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
-    print("first pass: scoring centroids")
     for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
         for i, centroid in enumerate(batch):
@@ -173,12 +172,8 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
 
-    print("second pass: searching vectors in selected clusters")
-
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
-
-        print(f"Searching in cluster {cid} with {len(vec_ids)} vectors")
 
         vecs = vec_db.get_rows(vec_ids)
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
