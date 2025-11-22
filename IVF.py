@@ -149,8 +149,10 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     with open(filename, "rb") as f:
         n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
         centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
+
     toc = time.time()
     print(f"Time to read header: {toc - tic:.4f} seconds")
+    
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
@@ -182,7 +184,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     candidates = []
 
     tic = time.time()
-    
+
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
