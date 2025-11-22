@@ -54,6 +54,22 @@ class VecDB:
             return np.array(mmap_vector[0])
         except Exception as e:
             return f"An error occurred: {e}"
+        
+    def get_rows(self, row_nums) -> np.ndarray:
+        try:
+            # Create memmap for the whole file (does NOT load all data)
+            mmap_vectors = np.memmap(
+                self.db_path,
+                dtype=np.float32,
+                mode='r'
+            ).reshape(-1, DIMENSION)
+
+            # Vectorized retrieval (loads only required rows)
+            return mmap_vectors[row_nums]
+
+        except Exception as e:
+            print("An error occurred:", e)
+            return None
 
     def get_all_rows(self) -> np.ndarray:
         # Take care this load all the data in memory
