@@ -143,20 +143,13 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     n_clusters, n_probe, dim = None, None, None
     centroid_offset, lengths_offset, ids_offset = None, None, None
 
-    tic = time.time()
-
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
         n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
         centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
 
-    toc = time.time()
-    print(f"Time to read header: {toc - tic:.4f} seconds")
-
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
-
-    tic = time.time()
 
     for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
@@ -171,23 +164,19 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                 if item > centroid_scores_heap[0]:
                     heapq.heappushpop(centroid_scores_heap, item)
 
-    toc = time.time()
-    print(f"Time to score centroids: {toc - tic:.4f} seconds")
-
     # After iterating all batches, extract the top n_probe centroid indices
     selected_centroids = [cid for _, cid in centroid_scores_heap]
 
-    # del centroid_scores_heap
-    # gc.collect()
-
     # ---- 4. Search actual vectors in selected clusters ----
     candidates = []
+    len_all_vectors = 0
 
     tic = time.time()
 
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
+        len_all_vectors += len(vec_ids)
         print(f"Searching in cluster {cid} with {len(vec_ids)} vectors")
 
         new_tic = time.time()
@@ -213,14 +202,11 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     toc = time.time()
     print(f"Time to search vectors in selected clusters: {toc - tic:.4f} seconds")
-
-    tic = time.time()
+    print(f"Total vectors searched: {len_all_vectors}")
+    print('###############################################')
 
     # ---- 5. Final results ----
     results = [(score, -vid) for score, vid in candidates]
     results.sort(key=lambda x: (x[0], x[1]))  # sort by score then ID
-    
-    toc = time.time()
-    print(f"Time to sort final results: {toc - tic:.4f} seconds")
 
     return [vid for _, vid in results]
