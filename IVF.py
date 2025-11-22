@@ -152,7 +152,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     toc = time.time()
     print(f"Time to read header: {toc - tic:.4f} seconds")
-    
+
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
@@ -188,7 +188,15 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, n_clusters, lengths_offset, ids_offset)
 
+        print(f"Searching in cluster {cid} with {len(vec_ids)} vectors")
+
+        new_tic = time.time()
+
         vecs = vec_db.get_rows(vec_ids)
+
+        new_toc = time.time()
+        print(f"Time to load vectors for cluster {cid}: {new_toc - new_tic:.4f} seconds")
+
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
         for vid, vec in zip(vec_ids, vecs):
