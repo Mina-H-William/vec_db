@@ -67,37 +67,35 @@ class BasicIVFIndexer:
 
         return labels
 
-
-    def write_index(self, filename):
-        vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.int64)
-        vector_ids_flat = (
-            np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=np.int64)
-        )
-
-        with open(filename, "wb") as f:
-            # 1. Header
-            f.write(struct.pack("iii", self.n_clusters, self.n_probe, self.centroids.shape[1]))
-
-            # Reserve space for 3 offsets (written later)
-            f.write(b"\x00" * 8 * 3)
-
-            # 2. Write centroids
-            centroid_offset = f.tell()
-            f.write(self.centroids.astype(np.float32).tobytes())
-
-            # 3. Write lengths
-            lengths_offset = f.tell()
-            f.write(vector_ids_lengths.astype(np.int64).tobytes())
-
-            # 4. Write flat IDs
-            ids_offset = f.tell()
-            f.write(vector_ids_flat.astype(np.int64).tobytes())
-
-            # 5. Go back and write offsets into the header
-            f.seek(4 * 3)  # after n_clusters, n_probe, dim
-            f.write(struct.pack("qqq", centroid_offset, lengths_offset, ids_offset))
-
-        print("Index saved to", filename)
+def write_index_optimized(self, filename):
+    vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.uint32)  # Use uint32
+    vector_ids_flat = np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=np.uint32)
+    
+    with open(filename, "wb") as f:
+        # 1. Header (reduced size)
+        f.write(struct.pack("III", self.n_clusters, self.n_probe, self.centroids.shape[1]))
+        
+        # Reserve space for offsets (4 bytes each instead of 8)
+        f.write(b"\x00" * 4 * 3)
+        
+        centroid_offset = f.tell()
+        f.write(self.centroids.astype(np.float32).tobytes())  # 4 bytes per element
+        
+        # 3. Lengths as uint32 instead of int64 (50% reduction)
+        lengths_offset = f.tell()
+        f.write(vector_ids_lengths.astype(np.uint32).tobytes())  # 4 bytes per length
+        
+        # 4. Vector IDs - biggest savings here
+        ids_offset = f.tell()
+        
+        # Since IDs are 1-20M, we can use uint32 (4 bytes) instead of int64 (8 bytes)
+        f.write(vector_ids_flat.astype(np.uint32).tobytes())  # 4 bytes per ID
+        
+        # 5. Write offsets as uint32
+        f.seek(4 * 3)  # After header
+        f.write(struct.pack("III", centroid_offset, lengths_offset, ids_offset))
+    
+    print("Optimized index saved to", filename)
 
 
 ################################################################################
@@ -124,15 +122,15 @@ def load_cluster_ids(filename, cluster_index, n_clusters, lengths_offset, ids_of
     with open(filename, "rb") as f:
         # Read all lengths (small array)
         f.seek(lengths_offset)
-        lengths = np.frombuffer(f.read(n_clusters * 8), dtype=np.int64)
+        lengths = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
 
         # Get offset of this cluster inside ids
         start = lengths[:cluster_index].sum()
         length = lengths[cluster_index]
 
         # Read that slice only
-        f.seek(ids_offset + start * 8)
-        data = np.frombuffer(f.read(length * 8), dtype=np.int64)
+        f.seek(ids_offset + start * 4)
+        data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
         return np.array(data)
 
@@ -145,8 +143,8 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
-        n_clusters, n_probe, dim = struct.unpack("iii", f.read(12))
-        centroid_offset, lengths_offset, ids_offset = struct.unpack("qqq", f.read(24))
+        n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
+        centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
 
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
