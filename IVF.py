@@ -67,7 +67,7 @@ class BasicIVFIndexer:
 
         return labels
 
-def write_index_optimized(self, filename):
+def write_index(self, filename):
     vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.uint32)  # Use uint32
     vector_ids_flat = np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=np.uint32)
     
