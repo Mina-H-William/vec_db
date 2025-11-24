@@ -127,13 +127,8 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
     with open(filename, "rb") as f:
 
         # Get offset of this cluster inside ids
-        start = lengths_array[:cluster_index].sum()
+        start = lengths_array[:cluster_index].sum().astype(np.uint32)
         length = lengths_array[cluster_index]
-
-        print(f"lengths_array dtype: {lengths_array.dtype}")
-        print(f"lengths_array contents: {lengths_array}")
-        print("start type", type(start))
-        print("length type", type(ids_offset))
 
         # Read that slice only
         f.seek(ids_offset + start * 4)
