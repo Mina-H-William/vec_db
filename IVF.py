@@ -172,17 +172,17 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # lengths_array = np.frombuffer(mm, dtype=np.uint32, count=n_clusters, offset=lengths_offset)
 
     candidates = []
-    # all_vec_ids = []
+    all_vec_ids = []
 
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-    #     all_vec_ids.extend(vec_ids)
+        all_vec_ids.extend(vec_ids)
     
-    # all_vec_ids = np.sort(np.array(all_vec_ids, dtype=np.uint32))
+    all_vec_ids = np.sort(np.array(all_vec_ids, dtype=np.int64))
 
     # Process in batches to limit memory usage
-    # for start in range(0, len(all_vec_ids), batch_size):
-    #     vec_ids = all_vec_ids[start:start+batch_size]
+    for start in range(0, len(all_vec_ids), batch_size):
+        vec_ids = all_vec_ids[start:start+batch_size]
 
         # for start in range(0, len(vec_ids), batch_size):
         #     vec_ids_batch = vec_ids[start:start+batch_size]
@@ -194,7 +194,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         for vid, vec in zip(vec_ids, vecs):
             score = cal_score(query_vector, vec)
 
-            item = (score, vid)
+            item = (score, -vid)
 
             if len(candidates) < k:
                 heapq.heappush(candidates, item)
@@ -203,7 +203,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                     heapq.heappushpop(candidates, item)
 
     # ---- 5. Final results ----
-    results = [(score, vid) for score, vid in candidates]
+    results = [(score, -vid) for score, vid in candidates]
     results.sort(key=lambda x: (x[0], x[1]))  # sort by score then ID
 
     return [vid for _, vid in results]
