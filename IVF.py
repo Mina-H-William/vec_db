@@ -113,6 +113,39 @@ def cal_score(vec1, vec2):
     return dot_product
 
 
+# def load_centroids_batches(mm, batch_size, n_clusters, dim, centroid_offset):
+
+#     for start in range(0, n_clusters, batch_size):
+#         end = min(batch_size, n_clusters - start)
+
+#         offset = centroid_offset + start * dim * 4
+#         # bytes_len = end * dim * 4
+
+#         batch = np.ndarray(
+#             shape=(end, dim),
+#             dtype=np.float32,
+#             buffer=mm,
+#             offset=offset
+#         )
+
+#         # IMPORTANT: yield read-only view
+#         yield start, batch
+
+
+# def load_cluster_ids(mm, cluster_index, lengths_array, ids_offset):
+
+#     # Compute offset in IDs array
+#     start = lengths_array[:cluster_index].sum().astype(np.uint32)
+#     length = lengths_array[cluster_index]
+
+#     offset = ids_offset + start * 4
+#     # byte_len = length * 4
+
+#     # Zero-copy view directly over mmap
+#     vec_ids = np.frombuffer(mm, dtype=np.uint32, count=length, offset=offset)
+
+#     return vec_ids
+
 def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
     with open(filename, "rb") as f:
         f.seek(centroid_offset)
@@ -134,8 +167,7 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
         f.seek(ids_offset + start * 4)
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
-        return np.array(data, dtype=np.int64)
-
+        return np.array(data)
 
 def search(vec_db, query_vector, k=5, batch_size=500):
     filename = vec_db.index_path
@@ -183,9 +215,6 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
         vec_ids = all_vec_ids[start:start+batch_size]
-
-        # for start in range(0, len(vec_ids), batch_size):
-        #     vec_ids_batch = vec_ids[start:start+batch_size]
 
         vecs = vec_db.get_rows(vec_ids)
 
