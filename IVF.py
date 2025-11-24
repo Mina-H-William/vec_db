@@ -134,7 +134,7 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
         f.seek(ids_offset + start * 4)
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
-        return np.array(data)
+        return np.array(data, dtype=np.int64)
 
 
 def search(vec_db, query_vector, k=5, batch_size=500):
@@ -194,7 +194,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         for vid, vec in zip(vec_ids, vecs):
             score = cal_score(query_vector, vec)
 
-            item = (score, -(vid.astype(np.int64)))
+            item = (score, -vid)
 
             if len(candidates) < k:
                 heapq.heappush(candidates, item)
