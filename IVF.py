@@ -187,20 +187,20 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         for start in range(0, len(vec_ids), batch_size):
             vec_ids_batch = vec_ids[start:start+batch_size]
 
-        vecs = vec_db.get_rows(vec_ids_batch)
+            vecs = vec_db.get_rows(vec_ids_batch)
 
-        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
+            vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-        for vid, vec in zip(vec_ids_batch, vecs):
-            score = cal_score(query_vector, vec)
+            for vid, vec in zip(vec_ids_batch, vecs):
+                score = cal_score(query_vector, vec)
 
-            item = (score, -vid)
+                item = (score, -vid)
 
-            if len(candidates) < k:
-                heapq.heappush(candidates, item)
-            else:
-                if item > candidates[0]:
-                    heapq.heappushpop(candidates, item)
+                if len(candidates) < k:
+                    heapq.heappush(candidates, item)
+                else:
+                    if item > candidates[0]:
+                        heapq.heappushpop(candidates, item)
 
     # ---- 5. Final results ----
     results = [(score, -vid) for score, vid in candidates]
