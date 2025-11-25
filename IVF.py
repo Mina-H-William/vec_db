@@ -188,7 +188,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
 ######################## Main search function ################
 
-def search(vec_db, query_vector, k=5, batch_size=500):
+def search(vec_db, query_vector, k=5, batch_size_for_centroids=500, batch_size_for_vectors=100):
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
@@ -201,7 +201,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
 
     # ---- 2. Find nearest centroids ----
-    selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset)
+    selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size_for_centroids, n_clusters, dim, centroid_offset)
 
     # ---- 3. Search actual vectors in selected clusters ----
 
@@ -220,7 +220,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     all_vec_ids.sort()
 
     # ---- 4. Get nearest k vectors among candidates ----
-    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size)
+    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
