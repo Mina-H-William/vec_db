@@ -68,7 +68,7 @@ class VecDB:
             )
 
             # Vectorized retrieval (loads only required rows)
-            return np.array(mmap_vectors)
+            return np.array(mmap_vectors[row_nums - row_nums[0]])
 
         except Exception as e:
             print("An error occurred:", e)
