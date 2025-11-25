@@ -57,13 +57,14 @@ class VecDB:
         
     def get_rows(self, row_nums) -> np.ndarray:
         try:
-            num_records = self._get_num_records()
+            start_offset = row_nums[0] * DIMENSION * ELEMENT_SIZE
             # Create memmap for the whole file (does NOT load all data)
             mmap_vectors = np.memmap(
                 self.db_path,
                 dtype=np.float32,
                 mode='r',
-                shape=(num_records, DIMENSION)
+                offset=start_offset,
+                shape=(row_nums[-1] - row_nums[0] + 1, DIMENSION)
             )
 
             # Vectorized retrieval (loads only required rows)

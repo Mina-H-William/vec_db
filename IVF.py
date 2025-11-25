@@ -204,4 +204,4 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
-    return [vid for _, vid in results]
+    return [vid + 1 for _, vid in results]
