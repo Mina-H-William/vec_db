@@ -188,7 +188,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
 ######################## Main search function ################
 
-def search(vec_db, query_vector, k=5, batch_size_for_centroids=500, batch_size_for_vectors=100):
+def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_for_vectors=100):
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
@@ -216,6 +216,9 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=500, batch_size_f
         all_vec_ids[pos:pos+L] = vec_ids
         pos += L
 
+    del lengths_array
+    del selected_centroids
+    del vec_ids
     # Sort once, fast in C
     all_vec_ids.sort()
 
