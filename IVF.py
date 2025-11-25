@@ -2,7 +2,6 @@ import numpy as np
 import struct
 import heapq
 from sklearn.cluster import MiniBatchKMeans
-import mmap
 
 
 DIMENSION = 70
