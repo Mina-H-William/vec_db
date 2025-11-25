@@ -113,61 +113,38 @@ def cal_score(vec1, vec2):
     return dot_product
 
 
-# def load_centroids_batches(mm, batch_size, n_clusters, dim, centroid_offset):
+def load_centroids_batches(mm, batch_size, n_clusters, dim, centroid_offset):
 
-#     for start in range(0, n_clusters, batch_size):
-#         end = min(batch_size, n_clusters - start)
+    for start in range(0, n_clusters, batch_size):
+        end = min(batch_size, n_clusters - start)
 
-#         offset = centroid_offset + start * dim * 4
-#         # bytes_len = end * dim * 4
+        offset = centroid_offset + start * dim * 4
+        # bytes_len = end * dim * 4
 
-#         batch = np.ndarray(
-#             shape=(end, dim),
-#             dtype=np.float32,
-#             buffer=mm,
-#             offset=offset
-#         )
+        batch = np.ndarray(
+            shape=(end, dim),
+            dtype=np.float32,
+            buffer=mm,
+            offset=offset
+        )
 
-#         # IMPORTANT: yield read-only view
-#         yield start, batch
+        # IMPORTANT: yield read-only view
+        yield start, batch
 
 
-# def load_cluster_ids(mm, cluster_index, lengths_array, ids_offset):
+def load_cluster_ids(mm, cluster_index, lengths_array, ids_offset):
 
-#     # Compute offset in IDs array
-#     start = lengths_array[:cluster_index].sum().astype(np.uint32)
-#     length = lengths_array[cluster_index]
+    # Compute offset in IDs array
+    start = lengths_array[:cluster_index].sum().astype(np.uint32)
+    length = lengths_array[cluster_index]
 
-#     offset = ids_offset + start * 4
-#     # byte_len = length * 4
+    offset = ids_offset + start * 4
+    # byte_len = length * 4
 
-#     # Zero-copy view directly over mmap
-#     vec_ids = np.frombuffer(mm, dtype=np.uint32, count=length, offset=offset)
+    # Zero-copy view directly over mmap
+    vec_ids = np.frombuffer(mm, dtype=np.uint32, count=length, offset=offset)
 
-#     return vec_ids
-
-def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    with open(filename, "rb") as f:
-        f.seek(centroid_offset)
-
-        for start in range(0, n_clusters, batch_size):
-            end = min(batch_size, n_clusters - start)
-            bytes_to_read = end * dim * 4  # float32 size
-            batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-            yield start, np.array(batch.reshape(end, dim))
-
-def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
-    with open(filename, "rb") as f:
-
-        # Get offset of this cluster inside ids
-        start = lengths_array[:cluster_index].sum().astype(np.uint32)
-        length = lengths_array[cluster_index]
-
-        # Read that slice only
-        f.seek(ids_offset + start * 4)
-        data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
-
-        return np.array(data)
+    return vec_ids
 
 def search(vec_db, query_vector, k=5, batch_size=500):
     filename = vec_db.index_path
@@ -175,16 +152,16 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
-        # mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+        mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
         n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
         centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
-        f.seek(lengths_offset)
-        lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
+        # f.seek(lengths_offset)
+        # lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
 
     # Min-heap to store top n_probe centroids (score, centroid_index)
     centroid_scores_heap = []
 
-    for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    for start_idx, batch in load_centroids_batches(mm, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
         for i, centroid in enumerate(batch):
             score = cal_score(query_vector, centroid)
@@ -201,13 +178,13 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     selected_centroids = [cid for _, cid in centroid_scores_heap]
 
     # ---- 4. Search actual vectors in selected clusters ----
-    # lengths_array = np.frombuffer(mm, dtype=np.uint32, count=n_clusters, offset=lengths_offset)
+    lengths_array = np.frombuffer(mm, dtype=np.uint32, count=n_clusters, offset=lengths_offset)
 
     candidates = []
     all_vec_ids = []
 
     for cid in selected_centroids:
-        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
+        vec_ids = load_cluster_ids(mm, cid, lengths_array, ids_offset)
         all_vec_ids.extend(vec_ids)
     
     all_vec_ids = np.sort(np.array(all_vec_ids, dtype=np.int64))
