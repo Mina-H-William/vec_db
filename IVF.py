@@ -112,6 +112,8 @@ def cal_score(vec1, vec2):
     return dot_product
 
 
+####################### functions for load index data from file   ################
+
 def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
     with open(filename, "rb") as f:
         f.seek(centroid_offset)
@@ -136,24 +138,16 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
         return np.array(data)
 
 
-def search(vec_db, query_vector, k=5, batch_size=500):
-    filename = vec_db.index_path
-    query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
+####################### functions for processing search functions   ################
 
-    # ---- 1. Read header ----
-    with open(filename, "rb") as f:
-        n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
-        centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
-        f.seek(lengths_offset)
-        lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
-
-    # Min-heap to store top n_probe centroids (score, centroid_index)
+def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
     centroid_scores_heap = []
 
     for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
-        for i, centroid in enumerate(batch):
-            score = cal_score(query_vector, centroid)
+        scores = batch @ query_vector
+
+        for i, score in enumerate(scores):
             item = (score, (start_idx + i))
 
             if len(centroid_scores_heap) < n_probe:
@@ -165,23 +159,10 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
     # After iterating all batches, extract the top n_probe centroid indices
     selected_centroids = [cid for _, cid in centroid_scores_heap]
+    return selected_centroids
 
-    # ---- 4. Search actual vectors in selected clusters ----
-
+def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     candidates = []
-    total = lengths_array[selected_centroids].sum().astype(np.uint32)
-    all_vec_ids = np.empty(total, dtype=np.uint32)
-
-    # Fill buffer efficiently
-    pos = 0
-    for cid in selected_centroids:
-        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-        L = len(vec_ids)
-        all_vec_ids[pos:pos+L] = vec_ids
-        pos += L
-
-    # Sort once, fast in C
-    all_vec_ids.sort()
 
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
@@ -201,6 +182,45 @@ def search(vec_db, query_vector, k=5, batch_size=500):
             else:
                 if item[0] > candidates[0][0] or (item[0] == candidates[0][0] and item[1] < candidates[0][1]):
                     heapq.heappushpop(candidates, item)
+
+    return candidates
+
+
+######################## Main search function ################
+
+def search(vec_db, query_vector, k=5, batch_size=500):
+    filename = vec_db.index_path
+    query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
+
+    # ---- 1. Read header ----
+    with open(filename, "rb") as f:
+        n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
+        centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
+        f.seek(lengths_offset)
+        lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
+
+
+    # ---- 2. Find nearest centroids ----
+    selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset)
+
+    # ---- 3. Search actual vectors in selected clusters ----
+
+    total = lengths_array[selected_centroids].sum().astype(np.uint32)
+    all_vec_ids = np.empty(total, dtype=np.uint32)
+
+    # Fill buffer efficiently
+    pos = 0
+    for cid in selected_centroids:
+        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
+        L = len(vec_ids)
+        all_vec_ids[pos:pos+L] = vec_ids
+        pos += L
+
+    # Sort once, fast in C
+    all_vec_ids.sort()
+
+    # ---- 4. Get nearest k vectors among candidates ----
+    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size)
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
