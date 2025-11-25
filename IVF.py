@@ -216,9 +216,6 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=500, batch_size_f
         all_vec_ids[pos:pos+L] = vec_ids
         pos += L
 
-    del lengths_array
-    del selected_centroids
-    del vec_ids
     # Sort once, fast in C
     all_vec_ids.sort()
 
