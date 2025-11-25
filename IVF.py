@@ -206,4 +206,4 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # ---- 5. Final results ----
 
     best = heapq.nlargest(k, candidates, key=lambda x: (x[0], -x[1]))
-    return [vid for score, vid in best]
+    return [vid for _, vid in best]
