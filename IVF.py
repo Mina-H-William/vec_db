@@ -113,45 +113,15 @@ def cal_score(vec1, vec2):
     return dot_product
 
 
-# def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-#     with open(filename, "rb") as f:
-#         f.seek(centroid_offset)
-
-#         for start in range(0, n_clusters, batch_size):
-#             end = min(batch_size, n_clusters - start)
-#             bytes_to_read = end * dim * 4  # float32 size
-#             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-#             yield start, np.array(batch.reshape(end, dim))
-
-
-
 def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    # size in bytes of all centroid data
-    total_bytes = n_clusters * dim * 4
-    
     with open(filename, "rb") as f:
-        # Map only the centroid region (best for RAM)
-        mm = mmap.mmap(f.fileno(), length=centroid_offset + total_bytes, access=mmap.ACCESS_READ)
-        
+        f.seek(centroid_offset)
+
         for start in range(0, n_clusters, batch_size):
             end = min(batch_size, n_clusters - start)
-
-            # byte positions relative to the whole file
-            offset = centroid_offset + start * dim * 4
-            # bytes_len = end * dim * 4
-
-            # build numpy array directly referencing mmap memory
-            batch = np.ndarray(
-                shape=(end, dim),
-                dtype=np.float32,
-                buffer=mm,
-                offset=offset
-            )
-
-            # yield a readonly view (important: do not modify!)
-            yield start, batch
-        
-        mm.close()
+            bytes_to_read = end * dim * 4  # float32 size
+            batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
+            yield start, np.array(batch.reshape(end, dim))
 
 def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
     with open(filename, "rb") as f:
@@ -185,7 +155,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         # batch shape: (batch_size, dim)
         for i, centroid in enumerate(batch):
             score = cal_score(query_vector, centroid)
-            item = (score, start_idx + i)
+            item = (score, -(start_idx + i))
 
             if len(centroid_scores_heap) < n_probe:
                 heapq.heappush(centroid_scores_heap, item)
@@ -195,7 +165,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                     heapq.heappushpop(centroid_scores_heap, item)
 
     # After iterating all batches, extract the top n_probe centroid indices
-    selected_centroids = [cid for _, cid in centroid_scores_heap]
+    selected_centroids = [-cid for _, cid in centroid_scores_heap]
 
     # ---- 4. Search actual vectors in selected clusters ----
 
