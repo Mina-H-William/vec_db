@@ -176,7 +176,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
         all_vec_ids.extend(vec_ids)
     
-    all_vec_ids = np.sort(all_vec_ids)
+    all_vec_ids = np.sort(np.array(all_vec_ids, dtype=np.uint32))
 
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
