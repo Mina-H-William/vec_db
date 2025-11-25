@@ -192,9 +192,9 @@ def search(vec_db, query_vector, k=5, batch_size=500):
 
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-        for vid, vec in zip(vec_ids, vecs):
-            score = cal_score(query_vector, vec)
+        scores = vecs @ query_vector
 
+        for vid, score in zip(vec_ids, scores):
             item = (score, vid)
 
             if len(candidates) < k:
@@ -204,6 +204,5 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                     heapq.heappushpop(candidates, item)
 
     # ---- 5. Final results ----
-
-    best = heapq.nlargest(k, candidates, key=lambda x: (x[0], -x[1]))
-    return [vid for _, vid in best]
+    results = sorted(candidates, key=lambda x: (-x[0], x[1]))
+    return [vid for _, vid in results]
