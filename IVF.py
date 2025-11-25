@@ -155,7 +155,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
         # batch shape: (batch_size, dim)
         for i, centroid in enumerate(batch):
             score = cal_score(query_vector, centroid)
-            item = (score, -(start_idx + i))
+            item = (score, (start_idx + i))
 
             if len(centroid_scores_heap) < n_probe:
                 heapq.heappush(centroid_scores_heap, item)
@@ -165,7 +165,7 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                     heapq.heappushpop(centroid_scores_heap, item)
 
     # After iterating all batches, extract the top n_probe centroid indices
-    selected_centroids = [-cid for _, cid in centroid_scores_heap]
+    selected_centroids = [cid for _, cid in centroid_scores_heap]
 
     # ---- 4. Search actual vectors in selected clusters ----
 
