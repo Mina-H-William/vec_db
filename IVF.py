@@ -184,12 +184,6 @@ def search(vec_db, query_vector, k=5, batch_size=500):
     # Sort once, fast in C
     all_vec_ids.sort()
 
-    # for cid in selected_centroids:
-    #     vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-    #     all_vec_ids.extend(vec_ids)
-    
-    # all_vec_ids = np.sort(np.array(all_vec_ids, dtype=np.uint32))
-
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
         vec_ids = all_vec_ids[start:start+batch_size]
@@ -210,9 +204,6 @@ def search(vec_db, query_vector, k=5, batch_size=500):
                     heapq.heappushpop(candidates, item)
 
     # ---- 5. Final results ----
-    # results = [(score, vid) for score, vid in candidates]
-    # results.sort(key=lambda x: (x[0], x[1]))  # sort by score then ID
 
-    # return [vid for _, vid in results]
-    best = heapq.nlargest(k, candidates, key=lambda x: x[0])
-    return [vid for _, vid in best]
+    best = heapq.nlargest(k, candidates, key=lambda x: (x[0], -x[1]))
+    return [vid for score, vid in best]
