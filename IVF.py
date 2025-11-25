@@ -134,7 +134,7 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
         f.seek(ids_offset + start * 4)
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
-        return data
+        return np.array(data)
 
 
 def search(vec_db, query_vector, k=5, batch_size=500):
