@@ -272,8 +272,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
-        end = min(start + batch_size, len(all_vec_ids))
-        vec_ids = all_vec_ids[start:end]
+        vec_ids = all_vec_ids[start:start+batch_size]
 
         vecs = vec_db.get_rows(vec_ids)
 
