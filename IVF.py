@@ -4,7 +4,7 @@ import heapq
 from sklearn.cluster import MiniBatchKMeans, KMeans
 
 
-DIMENSION = 70
+DIMENSION = 64
 
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10, n_subclusters=5):
@@ -295,7 +295,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 ######################## Main search function ################
 
 def search(vec_db, query_vector, k=5, 
-           batch_size_for_centroids=560, batch_size_for_vectors=14):
+           batch_size_for_centroids=512, batch_size_for_vectors=16):
 
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
@@ -312,8 +312,6 @@ def search(vec_db, query_vector, k=5,
         lvl2_lengths = np.frombuffer(
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
-    
-    n_probe += 20
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(

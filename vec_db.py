@@ -6,7 +6,7 @@ from IVF import BasicIVFIndexer, search
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
-DIMENSION = 70
+DIMENSION = 64
 
 class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = True, db_size = None) -> None:
@@ -90,7 +90,7 @@ class VecDB:
                 os.remove(self.index_path)
         
         n_clusters = self.db_size // 1000
-        n_probe = 10 + (self.db_size // 1000000) * 2
+        n_probe = 30 + (self.db_size // 1000000) * 2
         n_subclusters = 5
 
         self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe, n_subclusters=n_subclusters)
