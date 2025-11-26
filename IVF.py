@@ -89,8 +89,6 @@ class BasicIVFIndexer:
         self.sub_centroids = np.zeros((self.n_clusters, self.n_subclusters, dim), dtype=np.float32)
         self.sub_vector_ids = [[[] for _ in range(self.n_subclusters)] for _ in range(self.n_clusters)]
 
-        print("Building level-2 clusters (using standard KMeans)...")
-
         for c in range(self.n_clusters):
 
             ids = lvl1_vector_ids[c]
@@ -340,8 +338,8 @@ def search(vec_db, query_vector, k=5,
         # load IDs of best subcluster
         ids = load_lvl2_subcluster_ids(
             filename, c, best_s,
-            n_clusters, n_subclusters,
-            lvl2_lengths, lvl2_ids_offset
+            n_subclusters, lvl2_lengths,
+            lvl2_ids_offset
         )
 
         chosen_ids.extend(ids)
