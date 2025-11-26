@@ -68,7 +68,7 @@ class VecDB:
             )
 
             # Vectorized retrieval (loads only required rows)
-            return np.array(mmap_vectors[row_nums - row_nums[0]])
+            return mmap_vectors[row_nums - row_nums[0]]
 
         except Exception as e:
             print("An error occurred:", e)
@@ -91,8 +91,9 @@ class VecDB:
         
         n_clusters = self.db_size // 1000
         n_probe = 10 + (self.db_size // 1000000) * 2
+        n_subclusters = 5
 
-        self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe)
+        self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe, n_subclusters=n_subclusters)
         vectors = self.get_all_rows()
         self.ivf.Build(vectors)
         self.ivf.write_index(self.index_path)

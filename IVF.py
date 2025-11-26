@@ -1,63 +1,78 @@
 import numpy as np
 import struct
 import heapq
-from sklearn.cluster import MiniBatchKMeans
+from sklearn.cluster import MiniBatchKMeans, KMeans
 
 
 DIMENSION = 70
 
 class BasicIVFIndexer:
-    def __init__(self, n_clusters=1000, n_probe=10):
+    def __init__(self, n_clusters=1000, n_probe=10, n_subclusters=5):
         self.n_clusters = n_clusters
-        self.n_probe = n_probe  # Number of clusters to search
+        self.n_probe = n_probe
+        self.n_subclusters = n_subclusters
+
+        # Level-1
         self.centroids = None
-        self.vector_ids = None
+
+        # Level-2 (per cluster)
+        self.sub_centroids = None          # shape: (n_clusters, n_subclusters, dim)
+        self.sub_vector_ids = None         # list-of-list-of-lists:
+                                           # sub_vector_ids[c][s] = IDs for cluster c, subcluster s
+
+    # -----------------------------------------------------------
+    # BUILD INDEX
+    # -----------------------------------------------------------
 
     def Build(self, vectors, batch_size=100_000):
-        """
-        vectors: array-like or memmap supporting slicing: vectors[start:end]
-        vector_ids: optional sequence of ids
-        If dataset is large (>= use_minibatch_threshold) or vectors is a memmap,
-        use MiniBatchKMeans and batch normalization to avoid full in-RAM copies.
-        """
-        print("Building IVF index...")
-        vector_ids = np.arange(len(vectors))
+        print("Building level-1 IVF index...")
 
+        vector_ids = np.arange(len(vectors))
         n_samples = len(vectors)
 
-        labels = self.build_index_with_batchs(vectors, n_samples, batch_size)
+        labels = self._build_index_lvl1(vectors, n_samples, batch_size)
+        print("Level-1 clustering done.")
 
-        # Build vector ID lists per cluster
-        self.vector_ids = [[] for _ in range(self.n_clusters)]
+        # Create per-cluster ID lists
+        lvl1_vector_ids = [[] for _ in range(self.n_clusters)]
         for vid, lbl in zip(vector_ids, labels):
-            self.vector_ids[int(lbl)].append(int(vid))
+            lvl1_vector_ids[int(lbl)].append(int(vid))
 
-        print("IVF index built successfully.")
+        print("Building level-2 clusters inside each level-1 cluster...")
 
-    def build_index_with_batchs(self, vectors, n_samples, batch_size):
-        mbk = MiniBatchKMeans(n_clusters=self.n_clusters,
-                                  batch_size=batch_size,
-                                  random_state=0,
-                                  n_init='auto')
-        # Partial fit on normalized batches
+        self._build_index_lvl2(lvl1_vector_ids, vectors)
+        
+        print("Index fully built.")
+
+    # -----------------------------------------------------------
+    # BUILD LVL-1 INDEX
+    # -----------------------------------------------------------
+
+    def _build_index_lvl1(self, vectors, n_samples, batch_size):
+        mbk = MiniBatchKMeans(
+            n_clusters=self.n_clusters,
+            batch_size=batch_size,
+            random_state=0,
+            n_init='auto'
+        )
+
         for start in range(0, n_samples, batch_size):
-            print(f"Processing batch {start} to {min(start + batch_size, n_samples)}")
             end = min(start + batch_size, n_samples)
+            print(f"Level-1 partial fit batch {start}:{end}")
+
             batch = vectors[start:end]
-            # batch may be a view; normalize without creating a huge extra copy
             norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
-            batch_norm = batch / norms  # small temporary per-batch
+            batch_norm = batch / norms
             mbk.partial_fit(batch_norm)
 
-        # Save centroids
         self.centroids = mbk.cluster_centers_
         self.centroids /= (np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12)
 
-        # Assign labels in batches (predict on normalized batches)
+        # Assign labels
         labels = np.empty(n_samples, dtype=np.int32)
         for start in range(0, n_samples, batch_size):
-            print(f"Assigning labels for batch {start} to {min(start + batch_size, n_samples)}")
             end = min(start + batch_size, n_samples)
+            print(f"Level-1 assigning batch {start}:{end}")
             batch = vectors[start:end]
             norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
             batch_norm = batch / norms
@@ -65,41 +80,124 @@ class BasicIVFIndexer:
 
         return labels
 
+    # -----------------------------------------------------------
+    # BUILD LVL-2 INDEX
+    # -----------------------------------------------------------
+
+    def _build_index_lvl2(self, lvl1_vector_ids, vectors):
+        dim = vectors.shape[1]
+        self.sub_centroids = np.zeros((self.n_clusters, self.n_subclusters, dim), dtype=np.float32)
+        self.sub_vector_ids = [[[] for _ in range(self.n_subclusters)] for _ in range(self.n_clusters)]
+
+        print("Building level-2 clusters (using standard KMeans)...")
+
+        for c in range(self.n_clusters):
+
+            ids = lvl1_vector_ids[c]
+            if len(ids) == 0:
+                continue
+
+            cluster_vecs = vectors[ids]
+
+            # Normalize vectors
+            norms = np.linalg.norm(cluster_vecs, axis=1, keepdims=True) + 1e-12
+            cluster_vecs_norm = cluster_vecs / norms
+
+            # Only K clusters or fewer if cluster too small
+            K = min(self.n_subclusters, len(ids))
+
+            # Standard KMeans (better for small datasets)
+            km = KMeans(
+                n_clusters=K,
+                random_state=0,
+                n_init='auto'
+            )
+            km.fit(cluster_vecs_norm)
+
+            # Save centroids
+            self.sub_centroids[c, :K, :] = km.cluster_centers_
+
+            # Assign vector IDs to subclusters
+            labels = km.labels_
+            for vid, sl in zip(ids, labels):
+                self.sub_vector_ids[c][sl].append(vid)
+
+            # Sort IDs
+            for s in range(K):
+                self.sub_vector_ids[c][s].sort()
+
+        print("Level-2 hierarchical clustering done.")
+
+    # -----------------------------------------------------------
+    # WRITE INDEX TO FILE
+    # -----------------------------------------------------------
+
     def write_index(self, filename):
-        vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.uint32)  # Use uint32
 
-        # sort each list in vectorIds 
-        for lst in self.vector_ids:
-            lst.sort()
+        print("Saving hierarchical IVF index (minimal version)...")
 
-        vector_ids_flat = np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=np.uint32)
-        
+        # Prepare level-2 data
+        lvl2_lengths_list = []
+        lvl2_ids_list = []
+
+        for c in range(self.n_clusters):
+            for s in range(self.n_subclusters):
+                lst = self.sub_vector_ids[c][s]
+                lvl2_lengths_list.append(len(lst))
+                lvl2_ids_list.extend(lst)
+
+        lvl2_lengths = np.array(lvl2_lengths_list, dtype=np.uint32)
+        lvl2_ids_flat = np.array(lvl2_ids_list, dtype=np.uint32)
+
         with open(filename, "wb") as f:
-            # 1. Header (reduced size)
-            f.write(struct.pack("III", self.n_clusters, self.n_probe, self.centroids.shape[1]))
-            
-            # Reserve space for offsets (4 bytes each instead of 8)
-            f.write(b"\x00" * 4 * 3)
-            
-            centroid_offset = f.tell()
-            f.write(self.centroids.astype(np.float32).tobytes())  # 4 bytes per element
-            
-            # 3. Lengths as uint32 instead of int64 (50% reduction)
-            lengths_offset = f.tell()
-            f.write(vector_ids_lengths.astype(np.uint32).tobytes())  # 4 bytes per length
-            
-            # 4. Vector IDs - biggest savings here
-            ids_offset = f.tell()
-            
-            # Since IDs are 1-20M, we can use uint32 (4 bytes) instead of int64 (8 bytes)
-            f.write(vector_ids_flat.astype(np.uint32).tobytes())  # 4 bytes per ID
-            
-            # 5. Write offsets as uint32
-            f.seek(4 * 3)  # After header
-            f.write(struct.pack("III", centroid_offset, lengths_offset, ids_offset))
-        
-        print("Optimized index saved to", filename)
 
+            # -----------------------------------------------------
+            # HEADER
+            # -----------------------------------------------------
+            f.write(struct.pack("IIII",
+                                self.n_clusters,
+                                self.n_probe,
+                                self.centroids.shape[1],
+                                self.n_subclusters))
+
+            # Reserve space for 4 offsets
+            f.write(b"\x00" * (4 * 4))
+
+            # -----------------------------------------------------
+            # Write level-1 centroids
+            # -----------------------------------------------------
+            lvl1_centroids_offset = f.tell()
+            f.write(self.centroids.astype(np.float32).tobytes())
+
+            # -----------------------------------------------------
+            # Level-2 centroids
+            # -----------------------------------------------------
+            lvl2_centroids_offset = f.tell()
+            f.write(self.sub_centroids.astype(np.float32).tobytes())
+
+            # -----------------------------------------------------
+            # Level-2 cluster lengths
+            # -----------------------------------------------------
+            lvl2_lengths_offset = f.tell()
+            f.write(lvl2_lengths.tobytes())
+
+            # -----------------------------------------------------
+            # Level-2 cluster vector IDs
+            # -----------------------------------------------------
+            lvl2_ids_offset = f.tell()
+            f.write(lvl2_ids_flat.tobytes())
+
+            # -----------------------------------------------------
+            # Write Offsets
+            # -----------------------------------------------------
+            f.seek(4 * 4)  # after header
+            f.write(struct.pack("IIII",
+                                lvl1_centroids_offset,
+                                lvl2_centroids_offset,
+                                lvl2_lengths_offset,
+                                lvl2_ids_offset))
+
+        print("IVF index saved to", filename)
 
 ################################################################################
 
@@ -124,19 +222,29 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
             yield start, np.array(batch.reshape(end, dim))
 
-def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
+def load_lvl2_centroids(filename, c, n_subclusters, dim, lvl2_centroids_offset):
     with open(filename, "rb") as f:
+        # offset = base + c*(n_subclusters*dim*4)
+        offset = lvl2_centroids_offset + c * (n_subclusters * dim * 4)
+        f.seek(offset)
+        data = np.frombuffer(f.read(n_subclusters * dim * 4), dtype=np.float32)
+        return data.reshape(n_subclusters, dim)
 
-        # Get offset of this cluster inside ids
-        start = lengths_array[:cluster_index].sum().astype(np.uint32)
-        length = lengths_array[cluster_index]
+def load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lengths_array, lvl2_ids_offset):
+    """
+    lengths_array is length (n_clusters * n_subclusters)
+    It is stored in order:
+        [c0_s0, c0_s1, ..., c0_s(N-1), c1_s0, ..., c(K-1)_s(N-1)]
+    """
+    index = c * n_subclusters + s
 
-        # Read that slice only
-        f.seek(ids_offset + start * 4)
+    start = lengths_array[:index].sum().astype(np.uint32)
+    length = lengths_array[index]
+
+    with open(filename, "rb") as f:
+        f.seek(lvl2_ids_offset + start * 4)
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
-
-        return np.array(data)
-
+        return data
 
 ####################### functions for processing search functions   ################
 
@@ -188,40 +296,69 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
 ######################## Main search function ################
 
-def search(vec_db, query_vector, k=5, batch_size_for_centroids=560, batch_size_for_vectors=28):
+def search(vec_db, query_vector, k=5, 
+           batch_size_for_centroids=560, batch_size_for_vectors=28):
+
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
-        n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
-        centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
-        f.seek(lengths_offset)
-        lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
+        n_clusters, n_probe, dim, n_subclusters = struct.unpack("IIII", f.read(16))
 
+        lvl1_centroids_offset, lvl2_centroids_offset, \
+        lvl2_lengths_offset, lvl2_ids_offset = struct.unpack("IIII", f.read(16))
 
-    # ---- 2. Find nearest centroids ----
-    selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size_for_centroids, n_clusters, dim, centroid_offset)
+        # read lvl2 lengths
+        f.seek(lvl2_lengths_offset)
+        lvl2_lengths = np.frombuffer(
+            f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
+        )
 
-    # ---- 3. Search actual vectors in selected clusters ----
+    # ---- 2. Find nearest top-level centroids ----
+    selected_lvl1 = get_nearest_centroids(
+        filename, query_vector, n_probe,
+        batch_size_for_centroids, n_clusters, dim,
+        lvl1_centroids_offset
+    )
 
-    total = lengths_array[selected_centroids].sum().astype(np.uint32)
-    all_vec_ids = np.empty(total, dtype=np.uint32)
+    # ---- 3. From each selected L1 cluster pick nearest subcluster ----
+    chosen_ids = []
 
-    # Fill buffer efficiently
-    pos = 0
-    for cid in selected_centroids:
-        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-        L = len(vec_ids)
-        all_vec_ids[pos:pos+L] = vec_ids
-        pos += L
+    for c in selected_lvl1:
+        # Load lvl2 centroids for this cluster
+        sub_centroids = load_lvl2_centroids(
+            filename, c, n_subclusters, dim, lvl2_centroids_offset
+        )
 
-    # Sort once, fast in C
-    all_vec_ids.sort()
+        # scores for all 5 subclusters
+        scores = sub_centroids @ query_vector
 
-    # ---- 4. Get nearest k vectors among candidates ----
-    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
+        # choose best subcluster index
+        best_s = np.argmax(scores)
 
-    # ---- 5. Final results ----
+        # load IDs of best subcluster
+        ids = load_lvl2_subcluster_ids(
+            filename, c, best_s,
+            n_clusters, n_subclusters,
+            lvl2_lengths, lvl2_ids_offset
+        )
+
+        chosen_ids.extend(ids)
+
+    # ---- 4. sort ----
+    chosen_ids = np.array(chosen_ids, dtype=np.uint32)
+    chosen_ids.sort()
+
+    # ---- 5. Score vectors ----
+    candidates = get_nearest_k_vectors(
+        vec_db, query_vector, chosen_ids,
+        k, batch_size_for_vectors
+    )
+
+    # ---- 6. Sort final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
+
     return [vid for _, vid in results]
+
+
