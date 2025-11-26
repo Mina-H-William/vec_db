@@ -321,6 +321,7 @@ def search(vec_db, query_vector, k=5,
     )
 
     # ---- 3. From each selected L1 cluster pick nearest subcluster ----
+    n_probe_sub = 2  # number of subclusters per L1 cluster to scan
     chosen_ids = []
 
     for c in selected_lvl1:
@@ -332,17 +333,12 @@ def search(vec_db, query_vector, k=5,
         # scores for all 5 subclusters
         scores = sub_centroids @ query_vector
 
-        # choose best subcluster index
-        best_s = np.argmax(scores)
+         # Pick top n_probe_sub subclusters
+        top_s_idx = np.argpartition(-scores, n_probe_sub-1)[:n_probe_sub]
 
-        # load IDs of best subcluster
-        ids = load_lvl2_subcluster_ids(
-            filename, c, best_s,
-            n_subclusters, lvl2_lengths,
-            lvl2_ids_offset
-        )
-
-        chosen_ids.extend(ids)
+        for s in top_s_idx:
+            ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
+            chosen_ids.extend(ids)
 
     # ---- 4. sort ----
     chosen_ids = np.array(chosen_ids, dtype=np.uint32)
