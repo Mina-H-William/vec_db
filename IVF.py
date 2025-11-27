@@ -24,7 +24,7 @@ class BasicIVFIndexer:
     # BUILD INDEX
     # -----------------------------------------------------------
 
-    def Build(self, vectors, batch_size=200_000):
+    def Build(self, vectors, batch_size=100_000):
         print("Building level-1 IVF index...")
 
         vector_ids = np.arange(len(vectors))
