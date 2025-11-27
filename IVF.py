@@ -274,6 +274,10 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     for start in range(0, len(all_vec_ids), batch_size):
         vec_ids = all_vec_ids[start:start+batch_size]
 
+        print("#############################################")
+        print("vec_ids: ", vec_ids)
+        print("#############################################")
+
         vecs = vec_db.get_rows(vec_ids)
 
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
@@ -312,6 +316,10 @@ def search(vec_db, query_vector, k=5,
         lvl2_lengths = np.frombuffer(
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
+
+    print("#############################################")
+    print("lvl2_lengths: ", lvl2_lengths)
+    print("#############################################")
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
