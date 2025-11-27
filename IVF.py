@@ -212,9 +212,6 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=560, batch_size_f
     pos = 0
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-        print("###############################################")
-        print(f"Cluster {cid} has {len(vec_ids)} vectors.")
-        print("###############################################")
         L = len(vec_ids)
         all_vec_ids[pos:pos+L] = vec_ids
         pos += L
