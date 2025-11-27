@@ -274,10 +274,6 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     for start in range(0, len(all_vec_ids), batch_size):
         vec_ids = all_vec_ids[start:start+batch_size]
 
-        print("#############################################")
-        print("vec_ids: ", vec_ids)
-        print("#############################################")
-
         vecs = vec_db.get_rows(vec_ids)
 
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
