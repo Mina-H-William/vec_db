@@ -24,7 +24,7 @@ class BasicIVFIndexer:
     # BUILD INDEX
     # -----------------------------------------------------------
 
-    def Build(self, vectors, batch_size=100_000):
+    def Build(self, vectors, batch_size=200_000):
         print("Building level-1 IVF index...")
 
         vector_ids = np.arange(len(vectors))
@@ -48,7 +48,7 @@ class BasicIVFIndexer:
     # BUILD LVL-1 INDEX
     # -----------------------------------------------------------
 
-    def _build_index_lvl1(self, vectors, n_samples, batch_size):
+    def _build_index_lvl1(self, vectors, n_samples, batch_size, epochs=10):
         mbk = MiniBatchKMeans(
             n_clusters=self.n_clusters,
             batch_size=batch_size,
@@ -56,14 +56,15 @@ class BasicIVFIndexer:
             n_init='auto'
         )
 
-        for start in range(0, n_samples, batch_size):
-            end = min(start + batch_size, n_samples)
-            print(f"Level-1 partial fit batch {start}:{end}")
+        for epoch in range(epochs):
+            for start in range(0, n_samples, batch_size):
+                end = min(start + batch_size, n_samples)
+                print(f"Level-1 partial fit epoch {epoch} batch {start}:{end}")
 
-            batch = vectors[start:end]
-            norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
-            batch_norm = batch / norms
-            mbk.partial_fit(batch_norm)
+                batch = vectors[start:end]
+                norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
+                batch_norm = batch / norms
+                mbk.partial_fit(batch_norm)
 
         self.centroids = mbk.cluster_centers_
         self.centroids /= (np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12)
