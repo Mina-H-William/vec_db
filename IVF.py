@@ -3,6 +3,7 @@ import struct
 import heapq
 from sklearn.cluster import MiniBatchKMeans, KMeans
 
+import time
 
 DIMENSION = 64
 
@@ -311,6 +312,8 @@ def search(vec_db, query_vector, k=5,
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
+    tic = time.time()
+
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
         n_clusters, n_probe, dim, n_subclusters = struct.unpack("IIII", f.read(16))
@@ -323,8 +326,14 @@ def search(vec_db, query_vector, k=5,
         lvl2_lengths = np.frombuffer(
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
+    
+    toc = time.time()
+    print(f"Index header loaded in {toc - tic:.4f} seconds.")
 
-    n_probe = 30 + ((n_clusters // 1000) * 2)
+    n_probe = 30 + ((n_clusters // 1000))
+
+
+    tic = time.time()
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
@@ -333,9 +342,14 @@ def search(vec_db, query_vector, k=5,
         lvl1_centroids_offset
     )
 
+    toc = time.time()
+    print(f"Top-level centroids selected in {toc - tic:.4f} seconds.")
+
     # ---- 3. From each selected L1 cluster pick nearest subcluster ----
     n_probe_sub = 3  # number of subclusters per L1 cluster to scan
     chosen_ids = []
+
+    tic = time.time()
 
     for c in selected_lvl1:
         # Load lvl2 centroids for this cluster
@@ -354,17 +368,25 @@ def search(vec_db, query_vector, k=5,
             chosen_ids.extend(ids)
 
 
+    toc = time.time()
+    print(f"Sub-level clusters processed in {toc - tic:.4f} seconds.")
+
     # ---- 4. sort ----
     chosen_ids = np.array(chosen_ids, dtype=np.uint32)
     chosen_ids.sort()
 
     print(f"Total vectors: {len(chosen_ids)}")
 
+    tic = time.time()
+
     # ---- 5. Score vectors ----
     candidates = get_nearest_k_vectors(
         vec_db, query_vector, chosen_ids,
         k, batch_size_for_vectors
     )
+
+    toc = time.time()
+    print(f"Vectors scored in {toc - tic:.4f} seconds.")
 
     # ---- 6. Sort final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
