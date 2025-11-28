@@ -330,7 +330,7 @@ def search(vec_db, query_vector, k=5,
     )
 
     # ---- 3. From each selected L1 cluster pick nearest subcluster ----
-    n_probe_sub = 3  # number of subclusters per L1 cluster to scan
+    n_probe_sub = 2  # number of subclusters per L1 cluster to scan
     chosen_ids = []
 
     for c in selected_lvl1:
