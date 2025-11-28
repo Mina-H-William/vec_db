@@ -114,7 +114,7 @@ class BasicIVFIndexer:
             km.fit(cluster_vecs_norm)
 
             # Save centroids
-            self.sub_centroids[c, :K, :] = km.cluster_centers_
+            self.sub_centroids[c, :K, :] = km.cluster_centers_ / (np.linalg.norm(km.cluster_centers_, axis=1, keepdims=True) + 1e-12)
 
             # Assign vector IDs to subclusters
             labels = km.labels_
