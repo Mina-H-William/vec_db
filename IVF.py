@@ -322,7 +322,7 @@ def search(vec_db, query_vector, k=5,
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
 
-    n_probe = 30 + (n_clusters // 1000)
+    n_probe = 10 + (n_clusters // 1000)
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
