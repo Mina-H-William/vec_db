@@ -114,7 +114,9 @@ class BasicIVFIndexer:
             km.fit(cluster_vecs_norm)
 
             # Save centroids
-            self.sub_centroids[c, :K, :] = km.cluster_centers_ / (np.linalg.norm(km.cluster_centers_, axis=1, keepdims=True) + 1e-12)
+            lvl2_centroids = km.cluster_centers_
+            lvl2_centroids /= (np.linalg.norm(lvl2_centroids, axis=1, keepdims=True) + 1e-12)
+            self.sub_centroids[c, :K, :] = lvl2_centroids
 
             # Assign vector IDs to subclusters
             labels = km.labels_
@@ -322,7 +324,7 @@ def search(vec_db, query_vector, k=5,
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
 
-    n_probe = 10 + (n_clusters // 1000)
+    n_probe = 30 + ((n_clusters // 1000) * 2)
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
