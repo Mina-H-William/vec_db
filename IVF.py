@@ -358,6 +358,8 @@ def search(vec_db, query_vector, k=5,
     chosen_ids = np.array(chosen_ids, dtype=np.uint32)
     chosen_ids.sort()
 
+    print(f"Total vectors: {len(chosen_ids)}")
+
     # ---- 5. Score vectors ----
     candidates = get_nearest_k_vectors(
         vec_db, query_vector, chosen_ids,
