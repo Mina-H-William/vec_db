@@ -57,7 +57,7 @@ class VecDB:
         
     def get_rows(self, row_nums) -> np.ndarray:
         try:
-            start_offset = row_nums[0] * DIMENSION * ELEMENT_SIZE
+            start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
 
             # Create memmap for the whole file (does NOT load all data)
             mmap_vectors = np.memmap(
