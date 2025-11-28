@@ -48,7 +48,7 @@ class BasicIVFIndexer:
     # BUILD LVL-1 INDEX
     # -----------------------------------------------------------
 
-    def _build_index_lvl1(self, vectors, n_samples, batch_size, epochs=5):
+    def _build_index_lvl1(self, vectors, n_samples, batch_size, epochs=10):
         mbk = MiniBatchKMeans(
             n_clusters=self.n_clusters,
             batch_size=batch_size,
