@@ -221,6 +221,18 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
             yield start, np.array(batch.reshape(end, dim))
 
+def load_lvl1_cluster_ids(filename, c, n_subclusters, lengths_array, lvl2_ids_offset):
+    
+    index = c * n_subclusters
+
+    start = lengths_array[:index].sum().astype(np.uint32)
+    length = lengths_array[index:index + n_subclusters].sum()
+
+    with open(filename, "rb") as f:
+        f.seek(lvl2_ids_offset + start * 4)
+        data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
+        return data
+
 def load_lvl2_centroids(filename, c, n_subclusters, dim, lvl2_centroids_offset):
     with open(filename, "rb") as f:
         # offset = base + c*(n_subclusters*dim*4)
@@ -230,11 +242,7 @@ def load_lvl2_centroids(filename, c, n_subclusters, dim, lvl2_centroids_offset):
         return data.reshape(n_subclusters, dim)
 
 def load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lengths_array, lvl2_ids_offset):
-    """
-    lengths_array is length (n_clusters * n_subclusters)
-    It is stored in order:
-        [c0_s0, c0_s1, ..., c0_s(N-1), c1_s0, ..., c(K-1)_s(N-1)]
-    """
+
     index = c * n_subclusters + s
 
     start = lengths_array[:index].sum().astype(np.uint32)
@@ -322,24 +330,28 @@ def search(vec_db, query_vector, k=5,
     )
 
     # ---- 3. From each selected L1 cluster pick nearest subcluster ----
-    n_probe_sub = 3  # number of subclusters per L1 cluster to scan
+    # n_probe_sub = 3  # number of subclusters per L1 cluster to scan
     chosen_ids = []
 
     for c in selected_lvl1:
-        # Load lvl2 centroids for this cluster
-        sub_centroids = load_lvl2_centroids(
-            filename, c, n_subclusters, dim, lvl2_centroids_offset
+        # # Load lvl2 centroids for this cluster
+        # sub_centroids = load_lvl2_centroids(
+        #     filename, c, n_subclusters, dim, lvl2_centroids_offset
+        # )
+
+        # # scores for all 5 subclusters
+        # scores = sub_centroids @ query_vector
+
+        #  # Pick top n_probe_sub subclusters
+        # top_s_idx = np.argpartition(-scores, n_probe_sub-1)[:n_probe_sub]
+
+        # for s in top_s_idx:
+        #     ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
+        #     chosen_ids.extend(ids)
+
+        chosen_ids.extend(
+            load_lvl1_cluster_ids(filename, c, n_subclusters, lvl2_lengths, lvl2_ids_offset)
         )
-
-        # scores for all 5 subclusters
-        scores = sub_centroids @ query_vector
-
-         # Pick top n_probe_sub subclusters
-        top_s_idx = np.argpartition(-scores, n_probe_sub-1)[:n_probe_sub]
-
-        for s in top_s_idx:
-            ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
-            chosen_ids.extend(ids)
 
     # ---- 4. sort ----
     chosen_ids = np.array(chosen_ids, dtype=np.uint32)
