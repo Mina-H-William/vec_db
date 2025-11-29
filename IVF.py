@@ -173,7 +173,7 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
         # batch shape: (batch_size, dim)
         scores.extend(batch @ query_vector)
 
-    np.array(scores, dtype=np.float32)
+    scores = np.array(scores, dtype=np.float32)
     return np.argpartition(-scores, n_probe-1)[:n_probe]
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
