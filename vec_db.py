@@ -55,21 +55,21 @@ class VecDB:
         except Exception as e:
             return f"An error occurred: {e}"
         
-    def get_rows(self, row_nums, db_size) -> np.ndarray:
+    def get_rows(self, row_nums) -> np.ndarray:
         try:
-            # start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
+            start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
             # Create memmap for the whole file (does NOT load all data)
             mmap_vectors = np.memmap(
                 self.db_path,
                 dtype=np.float32,
                 mode='r',
-                # offset=start_offset,
-                shape=(db_size, DIMENSION)
+                offset=start_offset,
+                shape=(len(row_nums), DIMENSION)
             )
 
             # Vectorized retrieval (loads only required rows)
-            # return np.array(mmap_vectors[row_nums - row_nums[0]])
-            return np.array(mmap_vectors[row_nums])
+            return np.array(mmap_vectors[row_nums - row_nums[0]])
+            # return np.array(mmap_vectors[row_nums])
 
         except Exception as e:
             print("An error occurred:", e)

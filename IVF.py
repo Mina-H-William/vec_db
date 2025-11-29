@@ -167,15 +167,14 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
     selected_centroids = [cid for _, cid in centroid_scores_heap]
     return selected_centroids
 
-def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size, n_clusters):
+def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     candidates = []
-    db_size = n_clusters * 1000
 
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
         vec_ids = all_vec_ids[start:start+batch_size]
 
-        vecs = vec_db.get_rows(vec_ids, db_size)
+        vecs = vec_db.get_rows(vec_ids)
 
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
@@ -231,7 +230,7 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
     all_vec_ids.sort()
 
     # ---- 4. Get nearest k vectors among candidates ----
-    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors, n_clusters)
+    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
