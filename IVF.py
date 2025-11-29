@@ -356,9 +356,9 @@ def search(vec_db, query_vector, k=5,
         #     ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
         #     chosen_ids.extend(ids)
 
-        chosen_ids = load_lvl1_cluster_ids(
+        chosen_ids.extend(load_lvl1_cluster_ids(
             filename, c, n_subclusters, lvl2_lengths, lvl2_ids_offset
-        )
+        ))
 
     # ---- 4. sort ----
     chosen_ids = np.array(chosen_ids, dtype=np.uint32)
