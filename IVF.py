@@ -224,9 +224,10 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
     all_vec_ids = []
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-        all_vec_ids.extend(vec_ids.tolist())
+        all_vec_ids.extend(vec_ids)
 
     # Sort once
+    all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
     all_vec_ids.sort()
 
     # ---- 4. Get nearest k vectors among candidates ----
