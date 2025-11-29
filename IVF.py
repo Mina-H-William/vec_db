@@ -319,7 +319,7 @@ def search(vec_db, query_vector, k=5,
         )
 
 
-    n_probe = 20 + ((n_clusters // 1000) * 2)
+    n_probe = 20 + ((n_clusters // 1000))
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
@@ -330,7 +330,8 @@ def search(vec_db, query_vector, k=5,
 
     # ---- 3. From each selected L1 cluster pick nearest subcluster ----
     n_probe_sub = 3  # number of subclusters per L1 cluster to scan
-    chosen_ids = []
+    chosen_ids = np.empty(100_000, dtype=np.uint32)
+    pos = 0
 
     for c in selected_lvl1:
         # Load lvl2 centroids for this cluster
@@ -349,10 +350,12 @@ def search(vec_db, query_vector, k=5,
 
         for s in top_s_idx:
             ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
-            chosen_ids.extend(ids)
+            L = len(ids)
+            chosen_ids[pos:pos+L] = ids
+            pos += L
 
     # ---- 4. sort ----
-    chosen_ids = np.array(chosen_ids, dtype=np.uint32)
+    chosen_ids = chosen_ids[:pos]
     chosen_ids.sort()
 
     # ---- 5. Score vectors ----
