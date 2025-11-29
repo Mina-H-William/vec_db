@@ -147,34 +147,34 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    centroid_scores_heap = []
+    # centroid_scores_heap = []
 
-    for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-        # batch shape: (batch_size, dim)
-        scores = batch @ query_vector
-
-        for i, score in enumerate(scores):
-            item = (score, (start_idx + i))
-
-            if len(centroid_scores_heap) < n_probe:
-                heapq.heappush(centroid_scores_heap, item)
-            else:
-                # pushpop ensures only top n_probe remain
-                if item > centroid_scores_heap[0]:
-                    heapq.heappushpop(centroid_scores_heap, item)
-
-    # After iterating all batches, extract the top n_probe centroid indices
-    selected_centroids = [cid for _, cid in centroid_scores_heap]
-    return selected_centroids
-
-    # scores = []
-
-    # for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    # for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
     #     # batch shape: (batch_size, dim)
-    #     scores.extend(batch @ query_vector)
+    #     scores = batch @ query_vector
 
-    # scores = np.array(scores, dtype=np.float32)
-    # return np.argpartition(-scores, n_probe-1)[:n_probe]
+    #     for i, score in enumerate(scores):
+    #         item = (score, (start_idx + i))
+
+    #         if len(centroid_scores_heap) < n_probe:
+    #             heapq.heappush(centroid_scores_heap, item)
+    #         else:
+    #             # pushpop ensures only top n_probe remain
+    #             if item > centroid_scores_heap[0]:
+    #                 heapq.heappushpop(centroid_scores_heap, item)
+
+    # # After iterating all batches, extract the top n_probe centroid indices
+    # selected_centroids = [cid for _, cid in centroid_scores_heap]
+    # return selected_centroids
+
+    scores = []
+
+    for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+        # batch shape: (batch_size, dim)
+        scores.extend(batch @ query_vector)
+
+    scores = np.array(scores, dtype=np.float32)
+    return np.argpartition(-scores, n_probe-1)[:n_probe]
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     candidates = []
@@ -199,20 +199,6 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
                     heapq.heappushpop(candidates, item)
 
     return candidates
-
-    # scores = []
-
-    # # Process in batches to limit memory usage
-    # for start in range(0, len(all_vec_ids), batch_size):
-    #     vec_ids = all_vec_ids[start:start+batch_size]
-
-    #     vecs = vec_db.get_rows(vec_ids)
-
-    #     vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
-
-    #     scores.extend(vecs @ query_vector)
-
-    # return [(score, vid) for vid, score in zip(all_vec_ids, scores)]
 
 ######################## Main search function ################
 
@@ -248,5 +234,4 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
-    # results = sorted(candidates, key=lambda x: (-x[0], x[1]))[:k]
     return [vid for _, vid in results]
