@@ -279,12 +279,15 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
     # # After iterating all batches, extract the top n_probe centroid indices
     # selected_centroids = [cid for _, cid in centroid_scores_heap]
 
-    scores = []
+    scores = np.empty(n_clusters, dtype=np.float32)
+    pos = 0
 
     for batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-        scores.extend(batch @ query_vector)
+        l = batch.shape[0]
+        scores[pos:pos+l] = batch @ query_vector
+        pos += l
 
-    selected_centroids = np.argpartition(-np.array(scores), n_probe-1)[:n_probe]
+    selected_centroids = np.argpartition(-scores, n_probe-1)[:n_probe]
 
     return selected_centroids
 
@@ -335,7 +338,7 @@ def search(vec_db, query_vector, k=5,
         )
 
 
-    n_probe = 10 + ((n_clusters // 1000) * 2)
+    n_probe = 15 + ((n_clusters // 1000) * 2)
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
