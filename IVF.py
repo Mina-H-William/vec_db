@@ -222,7 +222,7 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             end = min(batch_size, n_clusters - start)
             bytes_to_read = end * dim * 4  # float32 size
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-            yield batch.reshape(end, dim)
+            yield start, batch.reshape(end, dim)
 
 def load_lvl1_cluster_ids(filename, c, n_subclusters, lengths_array, lvl2_ids_offset):
     
@@ -260,15 +260,37 @@ def load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lengths_array, lvl2_
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    scores = np.empty(n_clusters, dtype=np.float32)
-    pos = 0
+    # scores = np.empty(n_clusters, dtype=np.float32)
+    # pos = 0
 
-    for batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-        l = batch.shape[0]
-        scores[pos:pos+l] = batch @ query_vector
-        pos += l
+    # for batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    #     l = batch.shape[0]
+    #     scores[pos:pos+l] = batch @ query_vector
+    #     pos += l
 
-    selected_centroids = np.argpartition(-scores, n_probe-1)[:n_probe]
+    # selected_centroids = np.argpartition(-scores, n_probe-1)[:n_probe]
+
+    # return selected_centroids
+
+    centroid_scores_heap = []
+
+    for start, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+        # batch shape: (batch_size, dim)
+
+        scores = batch @ query_vector
+
+        for i, score in enumerate(scores):
+            item = (score, (start + i))
+
+            if len(centroid_scores_heap) < n_probe:
+                heapq.heappush(centroid_scores_heap, item)
+            else:
+                # pushpop ensures only top n_probe remain
+                if item > centroid_scores_heap[0]:
+                    heapq.heappushpop(centroid_scores_heap, item)
+
+    # After iterating all batches, extract the top n_probe centroid indices
+    selected_centroids = [cid for _, cid in centroid_scores_heap]
 
     return selected_centroids
 
