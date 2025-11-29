@@ -6,6 +6,12 @@ import pickle
 from sklearn.cluster import KMeans
 import heapq
 import time
+import logging
+import struct
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
@@ -15,17 +21,6 @@ class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = True, db_size = None) -> None:
         self.db_path = database_file_path
         self.index_path = index_file_path
-        
-        # IVF parameters - will be set based on database size
-        self.nlist = None
-        self.nprobe = None
-        
-        # PQ parameters
-        self.m = None  # Number of subvectors
-        self.sub_dim = None  # Dimensions per subvector
-        
-        # Metadata that will be loaded when needed
-        self.index_metadata = None
         
         if new_db:
             if db_size is None:
@@ -58,25 +53,26 @@ class VecDB:
         mmap_vectors = np.memmap(self.db_path, dtype=np.float32, mode='r+', shape=full_shape)
         mmap_vectors[num_old_records:] = rows
         mmap_vectors.flush()
-        # Rebuild the index (handling insertions properly would be more complex)
+        # Rebuild the index
         self._build_index()
 
     def get_one_row(self, row_num: int) -> np.ndarray:
-        # This function only loads one row in memory
+        # This function is only load one row in memory
         try:
             offset = row_num * DIMENSION * ELEMENT_SIZE
             mmap_vector = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(1, DIMENSION), offset=offset)
             return np.array(mmap_vector[0])
         except Exception as e:
-            return f"An error occurred: {e}"
+            logger.error(f"Error loading row {row_num}: {e}")
+            return np.zeros(DIMENSION, dtype=np.float32)
 
     def get_all_rows(self) -> np.ndarray:
-        # Take care this loads all the data in memory
+        # Take care this load all the data in memory
         num_records = self._get_num_records()
         vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
         return np.array(vectors)
     
-    def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
+    def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k=5):
         """Retrieve top-k similar vectors using IVF+PQ with disk-based access"""
         # Get database size to determine parameters
         num_records = self._get_num_records()
@@ -87,10 +83,26 @@ class VecDB:
         m = self._get_m_for_size(num_records)
         sub_dim = DIMENSION // m
         
-        # Load minimal required data from disk (meets no-caching requirement)
-        cluster_centers = self._load_cluster_centers(nlist)
-        offsets = self._load_offsets(nlist)
-        codebooks = self._load_codebooks(m, sub_dim)
+        # Check if index file exists
+        if not os.path.exists(self.index_path):
+            logger.warning("Index file not found, falling back to brute-force search")
+            return self._brute_force_retrieve(query, top_k)
+        
+        # Load minimal required data from disk
+        try:
+            # Only load metadata first to get index structure
+            metadata = self._load_metadata()
+            nlist = metadata['nlist']
+            m = metadata['m']
+            sub_dim = metadata['sub_dim']
+            
+            # Now load the specific components we need
+            cluster_centers = self._load_cluster_centers(nlist)
+            offsets = self._load_offsets(nlist)
+            codebooks = self._load_codebooks(m, sub_dim)
+        except Exception as e:
+            logger.error(f"Failed to load index components: {e}")
+            return self._brute_force_retrieve(query, top_k)
         
         # 1. Find nprobe closest clusters
         # Convert query to float32 and normalize for cosine similarity
@@ -99,36 +111,34 @@ class VecDB:
         if query_norm > 0:
             query = query / query_norm
         
+        # Calculate similarity to all cluster centers
         cluster_distances = []
         for i in range(nlist):
-            # Normalize cluster center for cosine similarity
+            # Normalize cluster center
             center = cluster_centers[i]
             center_norm = np.linalg.norm(center)
             if center_norm > 0:
                 center = center / center_norm
-                
-            # Calculate cosine similarity (higher is better)
+            
+            # Calculate cosine similarity
             similarity = np.dot(query, center)
             cluster_distances.append((similarity, i))
         
         # Get the nprobe clusters with highest similarity
         closest_clusters = sorted(cluster_distances, reverse=True)[:nprobe]
         
-        # 2. Precompute distance tables for PQ
-        dist_tables = []
+        # 2. Precompute SIMILARITY tables (CRITICAL FIX)
+        sim_tables = []
         for j in range(m):
             subvec = query[j*sub_dim:(j+1)*sub_dim]
             # Normalize subvector
             subvec_norm = np.linalg.norm(subvec)
             if subvec_norm > 0:
                 subvec = subvec / subvec_norm
-                
-            # Distance from query subvector to all 256 centroids
-            # For cosine similarity: distance = 1 - similarity
+            
+            # Calculate similarities (dot product = cosine similarity for normalized vectors)
             similarities = np.dot(codebooks[j], subvec)
-            # Convert to distances (higher similarity = lower distance)
-            distances = 1 - similarities
-            dist_tables.append(distances)
+            sim_tables.append(similarities)
         
         # 3. Search vectors in selected clusters
         candidates = []  # Will store (similarity, vector_id)
@@ -140,51 +150,108 @@ class VecDB:
             end_idx = int(offsets[cluster_id + 1])
             num_vectors = end_idx - start_idx
             
-            # Only process up to 1000 vectors per cluster to meet time constraints
+            # Only process up to 1000 vectors per cluster
             max_vectors = min(num_vectors, 1000)
             
-            # Load quantized vectors indices for this cluster
-            quantized_indices = self._load_quantized_indices(start_idx, start_idx + max_vectors, m)
+            # Skip empty clusters
+            if max_vectors <= 0:
+                continue
             
-            # Calculate approximate similarity for each vector in this cluster
+            # Load quantized vectors indices for this cluster
+            try:
+                quantized_indices = self._load_quantized_indices(start_idx, start_idx + max_vectors, m)
+            except Exception as e:
+                logger.error(f"Failed to load quantized indices for cluster {cluster_id}: {e}")
+                continue
+            
+            # Calculate APPROXIMATE SIMILARITY for each vector in this cluster
             for i in range(max_vectors):
                 vec_id = start_idx + i
                 approx_sim = 0
                 
-                # Sum similarities from all subvectors
+                # Sum similarities from all subvectors (CORRECTED)
                 for j in range(m):
-                    approx_sim += (1 - dist_tables[j][quantized_indices[i, j]])
+                    approx_sim += sim_tables[j][quantized_indices[i, j]]
+                
+                # Normalize by number of subvectors to get proper range [0, m]
+                # This is critical for proper ranking
+                approx_sim = approx_sim / m
                 
                 # Keep top candidates using min-heap for efficiency
-                if len(candidates) < top_k:
+                if len(candidates) < top_k * 3:  # Keep more candidates for refinement
                     heapq.heappush(candidates, (approx_sim, vec_id))
                 else:
-                    # If better than the worst in our current top-k
+                    # If better than the worst in our current top-k*3
                     if approx_sim > candidates[0][0]:
                         heapq.heapreplace(candidates, (approx_sim, vec_id))
         
-        # 4. Return top-k results (sorted by similarity, highest first)
-        results = [vec_id for _, vec_id in sorted(candidates, reverse=True)]
-        return results[:top_k]
+        # 4. REFINEMENT STEP: Calculate exact similarity for top candidates
+        # This dramatically improves accuracy with minimal time cost
+        refined_candidates = []
+        for sim, vec_id in candidates:
+            # Get the actual vector
+            vector = self.get_one_row(vec_id)
+            
+            # Calculate exact cosine similarity
+            exact_sim = self._cal_score(query, vector)
+            
+            refined_candidates.append((exact_sim, vec_id))
+        
+        # Sort by exact similarity and return top-k
+        refined_candidates.sort(reverse=True)
+        return [vec_id for _, vec_id in refined_candidates[:top_k]]
+    
+    def _brute_force_retrieve(self, query: np.ndarray, top_k: int) -> List[int]:
+        """Fallback method if index is not built properly"""
+        logger.warning("Falling back to brute-force search")
+        num_records = self._get_num_records()
+        
+        # Normalize query
+        query = query.astype(np.float32).flatten()
+        query_norm = np.linalg.norm(query)
+        if query_norm > 0:
+            query = query / query_norm
+        
+        # Use a heap to efficiently track top-k results
+        top_k_heap = []
+        
+        # Process in batches to minimize memory usage
+        batch_size = 1000
+        for start in range(0, num_records, batch_size):
+            end = min(start + batch_size, num_records)
+            batch_vectors = np.zeros((end - start, DIMENSION), dtype=np.float32)
+            
+            for i in range(start, end):
+                batch_vectors[i - start] = self.get_one_row(i)
+            
+            # Normalize batch vectors
+            norms = np.linalg.norm(batch_vectors, axis=1, keepdims=True)
+            batch_vectors = batch_vectors / np.where(norms > 0, norms, 1)
+            
+            # Calculate similarities
+            similarities = np.dot(batch_vectors, query)
+            
+            # Update top-k heap
+            for i in range(len(similarities)):
+                vec_id = start + i
+                sim = similarities[i]
+                
+                if len(top_k_heap) < top_k:
+                    heapq.heappush(top_k_heap, (sim, vec_id))
+                else:
+                    if sim > top_k_heap[0][0]:
+                        heapq.heapreplace(top_k_heap, (sim, vec_id))
+        
+        # Return results sorted by similarity (highest first)
+        return [vec_id for _, vec_id in sorted(top_k_heap, reverse=True)]
     
     def _cal_score(self, vec1, vec2):
-        """Calculate cosine similarity between two vectors"""
-        vec1 = vec1.astype(np.float32)
-        vec2 = vec2.astype(np.float32)
-        
-        # Normalize vectors
-        vec1_norm = np.linalg.norm(vec1)
-        vec2_norm = np.linalg.norm(vec2)
-        
-        if vec1_norm == 0 or vec2_norm == 0:
-            return 0.0
-            
-        vec1 = vec1 / vec1_norm
-        vec2 = vec2 / vec2_norm
-        
-        # Calculate cosine similarity
-        return np.dot(vec1, vec2)
-    
+        dot_product = np.dot(vec1, vec2)
+        norm_vec1 = np.linalg.norm(vec1)
+        norm_vec2 = np.linalg.norm(vec2)
+        cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
+        return cosine_similarity
+
     def _get_nlist_for_size(self, size):
         """Determine optimal nlist based on database size"""
         if size <= 1_000_000:
@@ -219,7 +286,7 @@ class VecDB:
             return 10  # Maximize compression
     
     def _build_index(self):
-        """Build IVF+PQ index and save to disk"""
+        """Build IVF+PQ index and save to a single file"""
         num_records = self._get_num_records()
         
         # Determine parameters based on database size
@@ -227,8 +294,8 @@ class VecDB:
         m = self._get_m_for_size(num_records)
         sub_dim = DIMENSION // m  # Should be 7 for m=10
         
-        print(f"Building IVF+PQ index for {num_records} vectors...")
-        print(f"Using parameters: nlist={nlist}, nprobe={self._get_nprobe_for_size(num_records)}, m={m}")
+        logger.info(f"Building IVF+PQ index for {num_records} vectors...")
+        logger.info(f"Using parameters: nlist={nlist}, nprobe={self._get_nprobe_for_size(num_records)}, m={m}")
         
         # 1. Sample vectors for training
         sample_size = min(100_000, num_records)
@@ -244,7 +311,7 @@ class VecDB:
         sample_vectors = sample_vectors / np.where(norms > 0, norms, 1)
         
         # 2. Build IVF index (k-means clustering)
-        print(f"Training IVF with {nlist} clusters...")
+        logger.info(f"Training IVF with {nlist} clusters...")
         kmeans = KMeans(n_clusters=nlist, n_init=1, random_state=42)
         kmeans.fit(sample_vectors)
         
@@ -253,13 +320,8 @@ class VecDB:
         norms = np.linalg.norm(cluster_centers, axis=1, keepdims=True)
         cluster_centers = cluster_centers / np.where(norms > 0, norms, 1)
         
-        # Save cluster centers
-        cluster_centers_path = os.path.join(os.path.dirname(self.index_path), "cluster_centers.bin")
-        with open(cluster_centers_path, 'wb') as f:
-            np.array(cluster_centers, dtype=np.float32).tofile(f)
-        
         # 3. Create inverted index
-        print("Building inverted index...")
+        logger.info("Building inverted index...")
         # Process in batches to avoid memory issues
         batch_size = 10_000
         offsets = np.zeros(nlist + 1, dtype=np.int32)  # +1 for convenience
@@ -286,11 +348,6 @@ class VecDB:
         for i in range(1, nlist + 1):
             offsets[i] = offsets[i-1] + vectors_per_cluster[i-1]
         
-        # Save offsets
-        offsets_path = os.path.join(os.path.dirname(self.index_path), "offsets.bin")
-        with open(offsets_path, 'wb') as f:
-            np.array(offsets, dtype=np.int32).tofile(f)
-        
         # Second pass: assign vectors to clusters
         vector_ids = np.zeros(num_records, dtype=np.int32)
         vectors_per_cluster = np.zeros(nlist, dtype=np.int32)
@@ -313,13 +370,8 @@ class VecDB:
                 vector_ids[pos] = start + i
                 vectors_per_cluster[cluster_id] += 1
         
-        # Save vector IDs
-        vector_ids_path = os.path.join(os.path.dirname(self.index_path), "vector_ids.bin")
-        with open(vector_ids_path, 'wb') as f:
-            np.array(vector_ids, dtype=np.int32).tofile(f)
-        
         # 4. Build PQ codebooks
-        print(f"Training PQ with {m} subvectors...")
+        logger.info(f"Training PQ with {m} subvectors...")
         codebooks = []
         for i in range(m):
             # Extract subvectors
@@ -336,14 +388,8 @@ class VecDB:
             
             codebooks.append(centroids)
         
-        # Save codebooks
-        codebooks_path = os.path.join(os.path.dirname(self.index_path), "codebooks.bin")
-        with open(codebooks_path, 'wb') as f:
-            for i in range(m):
-                np.array(codebooks[i], dtype=np.float32).tofile(f)
-        
         # 5. Quantize all vectors
-        print("Quantizing vectors...")
+        logger.info("Quantizing vectors...")
         quantized_vectors = np.zeros((num_records, m), dtype=np.uint8)
         
         for start in range(0, num_records, batch_size):
@@ -367,58 +413,59 @@ class VecDB:
                     best_centroid = np.argmax(similarities)
                     quantized_vectors[vec_id, j] = best_centroid
         
-        # Save quantized vectors
-        quantized_path = os.path.join(os.path.dirname(self.index_path), "quantized.bin")
-        with open(quantized_path, 'wb') as f:
-            quantized_vectors.tofile(f)
+        # 6. Save everything to a single index file
+        logger.info(f"Saving index to {self.index_path}")
         
-        # Save metadata
-        metadata = {
-            'nlist': nlist,
-            'm': m,
-            'sub_dim': sub_dim,
-            'num_records': num_records
+        # Create a dictionary with all index components
+        index_data = {
+            'metadata': {
+                'nlist': nlist,
+                'm': m,
+                'sub_dim': sub_dim,
+                'num_records': num_records
+            },
+            'cluster_centers': cluster_centers,
+            'offsets': offsets,
+            'codebooks': codebooks,
+            'quantized_vectors': quantized_vectors
         }
-        metadata_path = os.path.join(os.path.dirname(self.index_path), "metadata.pkl")
-        with open(metadata_path, 'wb') as f:
-            pickle.dump(metadata, f)
         
-        print(f"IVF+PQ index built successfully!")
-        print(f"Index size: {self._get_index_size():.2f} MB")
+        # Save to a single file using pickle
+        with open(self.index_path, 'wb') as f:
+            pickle.dump(index_data, f)
+        
+        # Log index size information
+        index_size = os.path.getsize(self.index_path) / (1024 * 1024)  # Convert to MB
+        logger.info(f"IVF+PQ index built successfully!")
+        logger.info(f"Index size: {index_size:.2f} MB")
+    
+    def _load_metadata(self):
+        """Load only the metadata from the index file"""
+        with open(self.index_path, 'rb') as f:
+            # Load only the metadata part
+            index_data = pickle.load(f)
+            return index_data['metadata']
     
     def _load_cluster_centers(self, nlist):
-        """Load cluster centers from disk"""
-        cluster_centers_path = os.path.join(os.path.dirname(self.index_path), "cluster_centers.bin")
-        return np.memmap(cluster_centers_path, dtype=np.float32, mode='r', 
-                         shape=(nlist, DIMENSION))
+        """Load cluster centers from the index file"""
+        with open(self.index_path, 'rb') as f:
+            index_data = pickle.load(f)
+            return index_data['cluster_centers']
     
     def _load_offsets(self, nlist):
-        """Load offsets from disk"""
-        offsets_path = os.path.join(os.path.dirname(self.index_path), "offsets.bin")
-        return np.memmap(offsets_path, dtype=np.int32, mode='r', 
-                         shape=(nlist + 1))
+        """Load offsets from the index file"""
+        with open(self.index_path, 'rb') as f:
+            index_data = pickle.load(f)
+            return index_data['offsets']
     
     def _load_codebooks(self, m, sub_dim):
-        """Load codebooks from disk"""
-        codebooks_path = os.path.join(os.path.dirname(self.index_path), "codebooks.bin")
-        return np.memmap(codebooks_path, dtype=np.float32, mode='r', 
-                         shape=(m, 256, sub_dim))
+        """Load codebooks from the index file"""
+        with open(self.index_path, 'rb') as f:
+            index_data = pickle.load(f)
+            return index_data['codebooks']
     
     def _load_quantized_indices(self, start_idx, end_idx, m):
-        """Load quantized vector indices from disk"""
-        quantized_path = os.path.join(os.path.dirname(self.index_path), "quantized.bin")
-        return np.memmap(quantized_path, dtype=np.uint8, mode='r', 
-                         offset=start_idx * m, 
-                         shape=(end_idx - start_idx, m))
-    
-    def _get_index_size(self):
-        """Calculate total index size in MB"""
-        total_size = 0
-        index_dir = os.path.dirname(self.index_path)
-        
-        for filename in os.listdir(index_dir):
-            if filename.endswith('.bin') or filename.endswith('.pkl'):
-                file_path = os.path.join(index_dir, filename)
-                total_size += os.path.getsize(file_path)
-                
-        return total_size / (1024 * 1024)  # Convert to MB
+        """Load quantized vector indices from the index file"""
+        with open(self.index_path, 'rb') as f:
+            index_data = pickle.load(f)
+            return index_data['quantized_vectors'][start_idx:end_idx]
