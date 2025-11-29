@@ -207,14 +207,22 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
 
     # ---- 3. Search actual vectors in selected clusters ----
 
-    # Prepare arguments
-    args_list = [(filename, lengths_array, ids_offset, cid) for cid in selected_centroids]
+    # # Prepare arguments
+    # args_list = [(filename, lengths_array, ids_offset, cid) for cid in selected_centroids]
 
-    with Pool(processes=MAX_WORKERS) as pool:
-        all_vec_ids_list = pool.map(load_cluster_wrapper, args_list)
+    # with Pool(processes=MAX_WORKERS) as pool:
+    #     all_vec_ids_list = pool.map(load_cluster_wrapper, args_list)
 
-    # Flatten the list of arrays
-    all_vec_ids = np.concatenate(all_vec_ids_list).astype(np.uint32)
+    # # Flatten the list of arrays
+    # all_vec_ids = np.concatenate(all_vec_ids_list).astype(np.uint32)
+    # all_vec_ids.sort()
+
+    all_vec_ids = []
+    for cid in selected_centroids:
+        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
+        all_vec_ids.extend(vec_ids)
+    
+    all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
     all_vec_ids.sort()
 
     # ---- 4. Get nearest k vectors among candidates ----
