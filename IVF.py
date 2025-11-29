@@ -177,30 +177,7 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
     return np.argpartition(-scores, n_probe-1)[:n_probe]
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
-    candidates = []
-
-    # Process in batches to limit memory usage
-    for start in range(0, len(all_vec_ids), batch_size):
-        vec_ids = all_vec_ids[start:start+batch_size]
-
-        vecs = vec_db.get_rows(vec_ids)
-
-        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
-
-        scores = vecs @ query_vector
-
-        for vid, score in zip(vec_ids, scores):
-            item = (score, vid)
-
-            if len(candidates) < k:
-                heapq.heappush(candidates, item)
-            else:
-                if item[0] > candidates[0][0] or (item[0] == candidates[0][0] and item[1] < candidates[0][1]):
-                    heapq.heappushpop(candidates, item)
-
-    return candidates
-
-    # scores = []
+    # candidates = []
 
     # # Process in batches to limit memory usage
     # for start in range(0, len(all_vec_ids), batch_size):
@@ -210,9 +187,32 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
     #     vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
-    #     scores.extend(vecs @ query_vector)
+    #     scores = vecs @ query_vector
 
-    # return [(score, vid) for vid, score in zip(all_vec_ids, scores)]
+    #     for vid, score in zip(vec_ids, scores):
+    #         item = (score, vid)
+
+    #         if len(candidates) < k:
+    #             heapq.heappush(candidates, item)
+    #         else:
+    #             if item[0] > candidates[0][0] or (item[0] == candidates[0][0] and item[1] < candidates[0][1]):
+    #                 heapq.heappushpop(candidates, item)
+
+    # return candidates
+
+    scores = []
+
+    # Process in batches to limit memory usage
+    for start in range(0, len(all_vec_ids), batch_size):
+        vec_ids = all_vec_ids[start:start+batch_size]
+
+        vecs = vec_db.get_rows(vec_ids)
+
+        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
+
+        scores.extend(vecs @ query_vector)
+
+    return [(score, vid) for vid, score in zip(all_vec_ids, scores)]
 
 ######################## Main search function ################
 
@@ -247,5 +247,5 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
     candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
 
     # ---- 5. Final results ----
-    results = sorted(candidates, key=lambda x: (-x[0], x[1]))
+    results = sorted(candidates, key=lambda x: (-x[0], x[1]))[:k]
     return [vid for _, vid in results]
