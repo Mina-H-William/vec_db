@@ -211,16 +211,6 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
 
     # ---- 3. Search actual vectors in selected clusters ----
 
-    # def load_one(cid):
-    #     return load_cluster_ids(filename, cid, lengths_array, ids_offset)
-
-    # # Multithreaded loading
-    # with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-    #     results = list(ex.map(load_one, selected_centroids))
-
-    # # Merge (fast C-level)
-    # all_vec_ids = np.concatenate(results).astype(np.uint32)
-
     all_vec_ids = []
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
