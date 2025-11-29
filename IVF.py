@@ -179,6 +179,12 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
     return candidates
 
+
+def load_cluster_wrapper(args):
+    filename, lengths_array, ids_offset, cid = args
+    return load_cluster_ids(filename, cid, lengths_array, ids_offset)
+
+
 ######################## Main search function ################
 
 def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_for_vectors=16):
@@ -208,11 +214,12 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
     # all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
     # all_vec_ids.sort()
 
-    def load_cluster_wrapper(cid):
-        return load_cluster_ids(filename, cid, lengths_array, ids_offset)
 
-    with Pool(processes=os.cpu_count()) as pool:  # adjust number of processes
-        all_vec_ids_list = pool.map(load_cluster_wrapper, selected_centroids)
+    # Prepare arguments
+    args_list = [(filename, lengths_array, ids_offset, cid) for cid in selected_centroids]
+
+    with Pool(processes=os.cpu_count()) as pool:
+        all_vec_ids_list = pool.map(load_cluster_wrapper, args_list)
 
     # Flatten the list of arrays
     all_vec_ids = np.concatenate(all_vec_ids_list).astype(np.uint32)
