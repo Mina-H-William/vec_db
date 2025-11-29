@@ -7,6 +7,7 @@ import os
 
 
 DIMENSION = 64
+MAX_WORKERS = os.cpu_count()
 
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
@@ -146,13 +147,33 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
+    # scores = []
+
+    # for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    #     # batch shape: (batch_size, dim)
+    #     scores.extend(batch @ query_vector)
+
+    # scores = np.array(scores, dtype=np.float32)
+    # return np.argpartition(-scores, n_probe-1)[:n_probe]
+
+     # Memory-map the entire centroid matrix
+    centroids = np.memmap(
+        filename,
+        dtype=np.float32,
+        mode='r',
+        offset=centroid_offset,
+        shape=(n_clusters, dim)
+    )
+
     scores = []
 
-    for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-        # batch shape: (batch_size, dim)
+    # Process in batches, but fast because memmap handles disk paging
+    for start in range(0, n_clusters, batch_size):
+        batch = centroids[start:start+batch_size]
         scores.extend(batch @ query_vector)
 
     scores = np.array(scores, dtype=np.float32)
+
     return np.argpartition(-scores, n_probe-1)[:n_probe]
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
@@ -205,20 +226,10 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
 
     # ---- 3. Search actual vectors in selected clusters ----
 
-    # all_vec_ids = []
-    # for cid in selected_centroids:
-    #     vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-    #     all_vec_ids.extend(vec_ids)
-
-    # # Sort once
-    # all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
-    # all_vec_ids.sort()
-
-
     # Prepare arguments
     args_list = [(filename, lengths_array, ids_offset, cid) for cid in selected_centroids]
 
-    with Pool(processes=os.cpu_count()) as pool:
+    with Pool(processes=MAX_WORKERS) as pool:
         all_vec_ids_list = pool.map(load_cluster_wrapper, args_list)
 
     # Flatten the list of arrays
