@@ -344,6 +344,8 @@ def search(vec_db, query_vector, k=5,
             filename, c, n_subclusters, dim, lvl2_centroids_offset
         )
 
+        sub_centroids /= (np.linalg.norm(sub_centroids, axis=1, keepdims=True) + 1e-12)
+
         # scores for all 5 subclusters
         scores = sub_centroids @ query_vector
 
