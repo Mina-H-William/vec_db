@@ -329,7 +329,7 @@ def search(vec_db, query_vector, k=5,
         )
 
 
-    n_probe = 20 + ((n_clusters // 1000))
+    n_probe = 10 + ((n_clusters // 1000))
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
@@ -339,7 +339,7 @@ def search(vec_db, query_vector, k=5,
     )
 
     # ---- 3. From each selected L1 cluster pick nearest subcluster ----
-    n_probe_sub = 3  # number of subclusters per L1 cluster to scan
+    # n_probe_sub = 3  # number of subclusters per L1 cluster to scan
     chosen_ids = []
 
     for c in selected_lvl1:
