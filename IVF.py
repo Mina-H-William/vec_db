@@ -222,7 +222,7 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             end = min(batch_size, n_clusters - start)
             bytes_to_read = end * dim * 4  # float32 size
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-            yield start, np.array(batch.reshape(end, dim))
+            yield start, batch.reshape(end, dim)
 
 def load_lvl1_cluster_ids(filename, c, n_subclusters, lengths_array, lvl2_ids_offset):
     
@@ -326,6 +326,7 @@ def search(vec_db, query_vector, k=5,
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
 
+    print("n_clusters:", n_clusters)
     if (n_clusters // 1000) == 10:
         n_probe = 35
     else:
