@@ -174,7 +174,7 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
         scores.extend(batch @ query_vector)
 
     
-    return scores
+    return np.argpartition(-scores, n_probe-1)[:n_probe]
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     candidates = []
