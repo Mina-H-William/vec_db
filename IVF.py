@@ -260,18 +260,6 @@ def load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lengths_array, lvl2_
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    # scores = np.empty(n_clusters, dtype=np.float32)
-    # pos = 0
-
-    # for batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    #     l = batch.shape[0]
-    #     scores[pos:pos+l] = batch @ query_vector
-    #     pos += l
-
-    # selected_centroids = np.argpartition(-scores, n_probe-1)[:n_probe]
-
-    # return selected_centroids
-
     centroid_scores_heap = []
 
     for start, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
