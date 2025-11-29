@@ -152,12 +152,7 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
 
     scores = np.array(scores, dtype=np.float32)
 
-    idx = np.argpartition(-scores, n_probe - 1)[:n_probe]
-
-    # 2. Sort those top-k by: score DESC, id ASC
-    idx_sorted = sorted(idx, key=lambda i: (-scores[i], i))
-
-    return idx_sorted
+    return np.sort(np.argpartition(-scores, n_probe - 1)[:n_probe])
 
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
