@@ -147,34 +147,15 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    # scores = []
-
-    # for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    #     # batch shape: (batch_size, dim)
-    #     scores.extend(batch @ query_vector)
-
-    # scores = np.array(scores, dtype=np.float32)
-    # return np.argpartition(-scores, n_probe-1)[:n_probe]
-
-     # Memory-map the entire centroid matrix
-    centroids = np.memmap(
-        filename,
-        dtype=np.float32,
-        mode='r',
-        offset=centroid_offset,
-        shape=(n_clusters, dim)
-    )
-
     scores = []
 
-    # Process in batches, but fast because memmap handles disk paging
-    for start in range(0, n_clusters, batch_size):
-        batch = centroids[start:start+batch_size]
+    for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+        # batch shape: (batch_size, dim)
         scores.extend(batch @ query_vector)
 
     scores = np.array(scores, dtype=np.float32)
-
     return np.argpartition(-scores, n_probe-1)[:n_probe]
+
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     candidates = []
