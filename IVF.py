@@ -344,22 +344,25 @@ def search(vec_db, query_vector, k=5,
 
     for c in selected_lvl1:
         # Load lvl2 centroids for this cluster
-        sub_centroids = load_lvl2_centroids(
-            filename, c, n_subclusters, dim, lvl2_centroids_offset
+        # sub_centroids = load_lvl2_centroids(
+        #     filename, c, n_subclusters, dim, lvl2_centroids_offset
+        # )
+
+        # # Should be done in Building time
+        # sub_centroids /= (np.linalg.norm(sub_centroids, axis=1, keepdims=True) + 1e-12)
+
+        # # scores for all 5 subclusters
+        # scores = sub_centroids @ query_vector
+
+        #  # Pick top n_probe_sub subclusters
+        # top_s_idx = np.argpartition(-scores, n_probe_sub-1)[:n_probe_sub]
+
+        # for s in top_s_idx:
+        #     ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
+        #     chosen_ids.extend(ids)
+        chosen_ids.extend(
+            load_lvl1_cluster_ids(filename, c, n_subclusters, lvl2_lengths, lvl2_ids_offset)
         )
-
-        # Should be done in Building time
-        sub_centroids /= (np.linalg.norm(sub_centroids, axis=1, keepdims=True) + 1e-12)
-
-        # scores for all 5 subclusters
-        scores = sub_centroids @ query_vector
-
-         # Pick top n_probe_sub subclusters
-        top_s_idx = np.argpartition(-scores, n_probe_sub-1)[:n_probe_sub]
-
-        for s in top_s_idx:
-            ids = load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lvl2_lengths, lvl2_ids_offset)
-            chosen_ids.extend(ids)
 
     # ---- 4. sort ----
     chosen_ids = np.array(chosen_ids, dtype=np.uint32)
