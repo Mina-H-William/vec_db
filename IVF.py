@@ -126,37 +126,19 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             bytes_to_read = end * dim * 4  # float32 size
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
             yield start, batch.reshape(end, dim)
-
-def load_cluster_ids(filename, lengths_array, ids_offset, selected_centroids):
-    with open(filename, "rb") as f:
-        all_ids = []
-        
-        for cluster_idx in selected_centroids:
-            length = lengths_array[cluster_idx]
-
-            start = lengths_array[:cluster_idx].sum()
-            f.seek(ids_offset + start * 4)
-                
-            # Read directly into pre-allocated array
-            all_ids.extend(
-                np.frombuffer(
-                f.read(length * 4), dtype=np.uint32
-            ))
-        
-        return all_ids
     
-# def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
-#     with open(filename, "rb") as f:
+def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
+    with open(filename, "rb") as f:
 
-#         # Get offset of this cluster inside ids
-#         start = lengths_array[:cluster_index].sum().astype(np.uint32)
-#         length = lengths_array[cluster_index]
+        # Get offset of this cluster inside ids
+        start = lengths_array[:cluster_index].sum().astype(np.uint32)
+        length = lengths_array[cluster_index]
 
-#         # Read that slice only
-#         f.seek(ids_offset + start * 4)
-#         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
+        # Read that slice only
+        f.seek(ids_offset + start * 4)
+        data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
-#         return data
+        return data
 
 
 ####################### functions for processing search functions   ################
@@ -218,16 +200,14 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
 
     # ---- 3. Search actual vectors in selected clusters ----
 
-    # all_vec_ids = []
-    # for cid in selected_centroids:
-    #     vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-    #     all_vec_ids.extend(vec_ids)
+    all_vec_ids = []
+    for cid in selected_centroids:
+        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
+        all_vec_ids.extend(vec_ids)
     
-    # all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
-    # all_vec_ids.sort()
-
-    all_vec_ids = load_cluster_ids(filename, lengths_array, ids_offset, selected_centroids)
+    all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
     all_vec_ids.sort()
+
 
     # ---- 4. Get nearest k vectors among candidates ----
     candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
