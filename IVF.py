@@ -169,7 +169,7 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
 
     scores = []
 
-    for batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
         scores.extend(batch @ query_vector)
 
