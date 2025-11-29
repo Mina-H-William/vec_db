@@ -2,12 +2,9 @@ import numpy as np
 import struct
 import heapq
 from sklearn.cluster import MiniBatchKMeans
-from multiprocessing import Pool
-import os
 
 
 DIMENSION = 64
-MAX_WORKERS = os.cpu_count()
 
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
@@ -154,7 +151,13 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
         scores.extend(batch @ query_vector)
 
     scores = np.array(scores, dtype=np.float32)
-    return np.argpartition(-scores, n_probe-1)[:n_probe]
+
+    idx = np.argpartition(-scores, n_probe - 1)[:n_probe]
+
+    # 2. Sort those top-k by: score DESC, id ASC
+    idx_sorted = sorted(idx, key=lambda i: (-scores[i], i))
+
+    return idx_sorted
 
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
@@ -206,16 +209,6 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
     selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size_for_centroids, n_clusters, dim, centroid_offset)
 
     # ---- 3. Search actual vectors in selected clusters ----
-
-    # # Prepare arguments
-    # args_list = [(filename, lengths_array, ids_offset, cid) for cid in selected_centroids]
-
-    # with Pool(processes=MAX_WORKERS) as pool:
-    #     all_vec_ids_list = pool.map(load_cluster_wrapper, args_list)
-
-    # # Flatten the list of arrays
-    # all_vec_ids = np.concatenate(all_vec_ids_list).astype(np.uint32)
-    # all_vec_ids.sort()
 
     all_vec_ids = []
     for cid in selected_centroids:
