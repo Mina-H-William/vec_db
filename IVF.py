@@ -236,6 +236,7 @@ def load_lvl1_cluster_ids(filename, c, n_subclusters, lengths_array, lvl2_ids_of
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
         return data
 
+#Remove copy to avoid unnecessary memory usage
 def load_lvl2_centroids(filename, c, n_subclusters, dim, lvl2_centroids_offset):
     with open(filename, "rb") as f:
         # offset = base + c*(n_subclusters*dim*4)
@@ -344,6 +345,7 @@ def search(vec_db, query_vector, k=5,
             filename, c, n_subclusters, dim, lvl2_centroids_offset
         )
 
+        # Should be done in Building time
         sub_centroids /= (np.linalg.norm(sub_centroids, axis=1, keepdims=True) + 1e-12)
 
         # scores for all 5 subclusters
