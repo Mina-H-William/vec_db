@@ -167,14 +167,15 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
     selected_centroids = [cid for _, cid in centroid_scores_heap]
     return selected_centroids
 
-def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
+def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size, n_clusters):
     candidates = []
+    db_size = n_clusters * 1000
 
     # Process in batches to limit memory usage
     for start in range(0, len(all_vec_ids), batch_size):
         vec_ids = all_vec_ids[start:start+batch_size]
 
-        vecs = vec_db.get_rows(vec_ids)
+        vecs = vec_db.get_rows(vec_ids, db_size)
 
         vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
 
@@ -211,21 +212,26 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_
 
     # ---- 3. Search actual vectors in selected clusters ----
 
-    def load_one(cid):
-        return load_cluster_ids(filename, cid, lengths_array, ids_offset)
+    # def load_one(cid):
+    #     return load_cluster_ids(filename, cid, lengths_array, ids_offset)
 
-    # Multithreaded loading
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        results = list(ex.map(load_one, selected_centroids))
+    # # Multithreaded loading
+    # with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+    #     results = list(ex.map(load_one, selected_centroids))
 
-    # Merge (fast C-level)
-    all_vec_ids = np.concatenate(results).astype(np.uint32)
+    # # Merge (fast C-level)
+    # all_vec_ids = np.concatenate(results).astype(np.uint32)
+
+    all_vec_ids = []
+    for cid in selected_centroids:
+        vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
+        all_vec_ids.extend(vec_ids.tolist())
 
     # Sort once
     all_vec_ids.sort()
 
     # ---- 4. Get nearest k vectors among candidates ----
-    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
+    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors, n_clusters)
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
