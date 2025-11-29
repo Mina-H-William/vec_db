@@ -189,7 +189,7 @@ def load_cluster_wrapper(args):
 
 ######################## Main search function ################
 
-def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_for_vectors=16):
+def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_for_vectors=16):
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
