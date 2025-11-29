@@ -10,6 +10,7 @@ class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
         self.n_clusters = n_clusters
         self.n_probe = n_probe  # Number of clusters to search
+
         self.centroids = None
         self.vector_ids = None
 
@@ -34,20 +35,22 @@ class BasicIVFIndexer:
 
         print("IVF index built successfully.")
 
-    def build_index_with_batchs(self, vectors, n_samples, batch_size):
+    def build_index_with_batchs(self, vectors, n_samples, batch_size, epochs=5):
         mbk = MiniBatchKMeans(n_clusters=self.n_clusters,
                                   batch_size=batch_size,
                                   random_state=0,
                                   n_init='auto')
+        
         # Partial fit on normalized batches
-        for start in range(0, n_samples, batch_size):
-            print(f"Processing batch {start} to {min(start + batch_size, n_samples)}")
-            end = min(start + batch_size, n_samples)
-            batch = vectors[start:end]
-            # batch may be a view; normalize without creating a huge extra copy
-            norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
-            batch_norm = batch / norms  # small temporary per-batch
-            mbk.partial_fit(batch_norm)
+        for epoch in range(epochs):
+            for start in range(0, n_samples, batch_size):
+                end = min(start + batch_size, n_samples)
+                print(f"Processing epoch {epoch}, batch {start} to {end}")
+                batch = vectors[start:end]
+                # batch may be a view; normalize without creating a huge extra copy
+                norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
+                batch_norm = batch / norms  # small temporary per-batch
+                mbk.partial_fit(batch_norm)
 
         # Save centroids
         self.centroids = mbk.cluster_centers_
@@ -122,7 +125,7 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             end = min(batch_size, n_clusters - start)
             bytes_to_read = end * dim * 4  # float32 size
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-            yield start, np.array(batch.reshape(end, dim))
+            yield start, batch.reshape(end, dim)
 
 def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
     with open(filename, "rb") as f:
@@ -135,7 +138,7 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
         f.seek(ids_offset + start * 4)
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
-        return np.array(data)
+        return data
 
 
 ####################### functions for processing search functions   ################
@@ -188,7 +191,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
 ######################## Main search function ################
 
-def search(vec_db, query_vector, k=5, batch_size_for_centroids=560, batch_size_for_vectors=28):
+def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_for_vectors=16):
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
