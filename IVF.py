@@ -147,34 +147,14 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    # scores = []
+    scores = []
 
-    # for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    #     # batch shape: (batch_size, dim)
-    #     scores.extend(batch @ query_vector)
-
-    # scores = np.array(scores, dtype=np.float32)
-    # return np.argpartition(-scores, n_probe-1)[:n_probe]
-
-    centroid_scores_heap = []
-
-    for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
-        scores = batch @ query_vector
+        scores.extend(batch @ query_vector)
 
-        for i, score in enumerate(scores):
-            item = (score, (start_idx + i))
-
-            if len(centroid_scores_heap) < n_probe:
-                heapq.heappush(centroid_scores_heap, item)
-            else:
-                # pushpop ensures only top n_probe remain
-                if item > centroid_scores_heap[0]:
-                    heapq.heappushpop(centroid_scores_heap, item)
-
-    # After iterating all batches, extract the top n_probe centroid indices
-    selected_centroids = [cid for _, cid in centroid_scores_heap]
-    return selected_centroids
+    scores = np.array(scores, dtype=np.float32)
+    return np.argpartition(-scores, n_probe-1)[:n_probe]
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
     candidates = []
@@ -202,7 +182,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 
 ######################## Main search function ################
 
-def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_for_vectors=16):
+def search(vec_db, query_vector, k=5, batch_size_for_centroids=1008, batch_size_for_vectors=20):
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
