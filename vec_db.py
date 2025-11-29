@@ -64,7 +64,7 @@ class VecDB:
                 dtype=np.float32,
                 mode='r',
                 offset=start_offset,
-                shape=(len(row_nums), DIMENSION)
+                shape=(row_nums[-1] - row_nums[0] + 1, DIMENSION)
             )
 
             # Vectorized retrieval (loads only required rows)
