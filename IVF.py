@@ -242,7 +242,7 @@ def load_lvl2_centroids(filename, c, n_subclusters, dim, lvl2_centroids_offset):
         offset = lvl2_centroids_offset + c * (n_subclusters * dim * 4)
         f.seek(offset)
         data = np.frombuffer(f.read(n_subclusters * dim * 4), dtype=np.float32)
-        return data.reshape(n_subclusters, dim)
+        return data.reshape(n_subclusters, dim).copy()
 
 def load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lengths_array, lvl2_ids_offset):
 
