@@ -222,7 +222,8 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             end = min(batch_size, n_clusters - start)
             bytes_to_read = end * dim * 4  # float32 size
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
-            yield start, batch.reshape(end, dim)
+            # yield start, batch.reshape(end, dim)
+            yield batch.reshape(end, dim)
 
 def load_lvl1_cluster_ids(filename, c, n_subclusters, lengths_array, lvl2_ids_offset):
     
@@ -260,24 +261,31 @@ def load_lvl2_subcluster_ids(filename, c, s, n_subclusters, lengths_array, lvl2_
 ####################### functions for processing search functions   ################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    centroid_scores_heap = []
+    # centroid_scores_heap = []
 
-    for start_idx, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+    # for start, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
         # batch shape: (batch_size, dim)
-        scores = batch @ query_vector
 
-        for i, score in enumerate(scores):
-            item = (score, (start_idx + i))
+    #     for i, score in enumerate(scores):
+    #         item = (score, (start_idx + i))
 
-            if len(centroid_scores_heap) < n_probe:
-                heapq.heappush(centroid_scores_heap, item)
-            else:
-                # pushpop ensures only top n_probe remain
-                if item > centroid_scores_heap[0]:
-                    heapq.heappushpop(centroid_scores_heap, item)
+    #         if len(centroid_scores_heap) < n_probe:
+    #             heapq.heappush(centroid_scores_heap, item)
+    #         else:
+    #             # pushpop ensures only top n_probe remain
+    #             if item > centroid_scores_heap[0]:
+    #                 heapq.heappushpop(centroid_scores_heap, item)
 
-    # After iterating all batches, extract the top n_probe centroid indices
-    selected_centroids = [cid for _, cid in centroid_scores_heap]
+    # # After iterating all batches, extract the top n_probe centroid indices
+    # selected_centroids = [cid for _, cid in centroid_scores_heap]
+
+    scores = []
+
+    for batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
+        scores.extend(batch @ query_vector)
+
+    selected_centroids = np.argpartition(-np.array(scores), n_probe-1)[:n_probe]
+
     return selected_centroids
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
@@ -308,7 +316,7 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 ######################## Main search function ################
 
 def search(vec_db, query_vector, k=5, 
-           batch_size_for_centroids=640, batch_size_for_vectors=16):
+           batch_size_for_centroids=1008, batch_size_for_vectors=16):
 
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
@@ -326,11 +334,8 @@ def search(vec_db, query_vector, k=5,
             f.read(n_clusters * n_subclusters * 4), dtype=np.uint32
         )
 
-    print("n_clusters:", n_clusters)
-    if (n_clusters // 1000) == 10:
-        n_probe = 35
-    else:
-        n_probe = 10 + ((n_clusters // 1000) * 2)
+
+    n_probe = 10 + ((n_clusters // 1000) * 2)
 
     # ---- 2. Find nearest top-level centroids ----
     selected_lvl1 = get_nearest_centroids(
