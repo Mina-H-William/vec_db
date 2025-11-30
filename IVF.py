@@ -151,8 +151,7 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
 
     scores = np.array(scores, dtype=np.float32)
 
-    # return np.sort(np.argpartition(-scores, n_probe - 1)[:n_probe])
-    return np.argpartition(-scores, n_probe - 1)[:n_probe]
+    return np.sort(np.argpartition(-scores, n_probe - 1)[:n_probe])
 
 
 
