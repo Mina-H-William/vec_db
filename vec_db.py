@@ -2,29 +2,30 @@ from operator import index
 from typing import Dict, List, Annotated
 import numpy as np
 import os
+from IVF import BasicIVFIndexer, search
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
-DIMENSION = 70
+DIMENSION = 64
 
 class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = True, db_size = None) -> None:
         self.db_path = database_file_path
         self.index_path = index_file_path
+        self.db_size = db_size
         if new_db:
             if db_size is None:
                 raise ValueError("You need to provide the size of the database")
             # delete the old DB file if exists
             if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-            self.generate_database(db_size)
-        else:
-            self._build_index()
+                self._build_index()
+            else:
+                self.generate_database(self.db_size)
     
     def generate_database(self, size: int) -> None:
         rng = np.random.default_rng(DB_SEED_NUMBER)
-        self.vectors = rng.random((size, DIMENSION), dtype=np.float32)
-        # self._write_vectors_to_file(vectors)
+        vectors = rng.random((size, DIMENSION), dtype=np.float32)
+        self._write_vectors_to_file(vectors)
         self._build_index()
 
     def _write_vectors_to_file(self, vectors: np.ndarray) -> None:
@@ -53,36 +54,74 @@ class VecDB:
             return np.array(mmap_vector[0])
         except Exception as e:
             return f"An error occurred: {e}"
+        
+    def get_rows(self, row_nums) -> np.ndarray:
+        start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
+        # Create memmap for the whole file (does NOT load all data)
+        mmap_vectors = np.memmap(
+            self.db_path,
+            dtype=np.float32,
+            mode='r',
+            offset=start_offset,
+            shape=(row_nums[-1] - row_nums[0] + 1, DIMENSION)
+        )
+
+        # Vectorized retrieval (loads only required rows)
+        return np.array(mmap_vectors[row_nums - row_nums[0]])
+        # return np.array(mmap_vectors[row_nums])
+
+    # def get_rows_efficient(self, row_nums):
+    #     # Calculate density: ratio of requested rows to span
+    #     span = row_nums[-1] - row_nums[0] + 1
+    #     density = len(row_nums) / span
+        
+    #     # If density > 0.5 (more than half the rows needed), load contiguous block
+    #     if density > 0.5:
+    #         # DENSE: Load contiguous block (your current approach - FAST!)
+    #         start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
+    #         mmap_vectors = np.memmap(
+    #             self.db_path,
+    #             dtype=np.float32,
+    #             mode='r',
+    #             offset=start_offset,
+    #             shape=(span, DIMENSION)
+    #         )
+    #         return np.array(mmap_vectors[row_nums - row_nums[0]])
+        
+    #     else:
+    #         # SPARSE: Load individually (safer for RAM)
+    #         result = np.empty((len(row_nums), DIMENSION), dtype=np.float32)
+            
+    #         with open(self.db_path, 'rb') as f:
+    #             for i, row_num in enumerate(row_nums):
+    #                 offset = np.int64(row_num) * DIMENSION * ELEMENT_SIZE
+    #                 f.seek(offset)
+    #                 result[i] = np.frombuffer(
+    #                     f.read(DIMENSION * ELEMENT_SIZE), 
+    #                     dtype=np.float32
+    #                 )
+            
+    #         return result
 
     def get_all_rows(self) -> np.ndarray:
         # Take care this load all the data in memory
-        # num_records = self._get_num_records()
-        # vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
-        # return np.array(vectors)
-        return self.vectors
+        num_records = self._get_num_records()
+        vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
+        return np.array(vectors)
     
-    # def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-    #     scores = []
-    #     num_records = self._get_num_records()
-    #     # here we assume that the row number is the ID of each vector
-    #     for row_num in range(num_records):
-    #         vector = self.get_one_row(row_num)
-    #         score = self._cal_score(query, vector)
-    #         scores.append((score, row_num))
-    #     # here we assume that if two rows have the same score, return the lowest ID
-    #     scores = sorted(scores, reverse=True)[:top_k]
-    #     return [s[1] for s in scores]
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
         
-    
-    def _cal_score(self, vec1, vec2):
-        dot_product = np.dot(vec1, vec2)
-        norm_vec1 = np.linalg.norm(vec1)
-        norm_vec2 = np.linalg.norm(vec2)
-        cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
-        return cosine_similarity
+        return search(self, query.ravel(), top_k)
 
     def _build_index(self):
-        # Placeholder for index building logic
+        if os.path.exists(self.index_path):
+                os.remove(self.index_path)
         
+        n_clusters = self.db_size // 1000
+        n_probe = 10 + (self.db_size // 1000000) * 2
+
+        self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe)
+        vectors = self.get_all_rows()
+        self.ivf.Build(vectors)
+        self.ivf.write_index(self.index_path)

@@ -17,7 +17,8 @@ class Result:
 def run_queries(db, np_rows, top_k, num_runs):
     results = []
     for _ in range(num_runs):
-        query = np.random.random((1,70))
+        rng = np.random.default_rng(10)
+        query = rng.random((1, 70), dtype=np.float32)
         
         tic = time.time()
         db_ids = db.retrieve(query, top_k)
@@ -66,10 +67,10 @@ if __name__ == "__main__":
     # Parse arguments
     args = parser.parse_args()
 
-    db = VecDB(db_size = int(args.size * 10**6), database_file_path=f'saved_db_{args.size}m.dat',
-                index_file_path=f'index_{args.size}m.dat', new_db=True)
+    db = VecDB(db_size = int(args.size * 10**6), database_file_path=f'OpenSubtitles_en_{args.size}M_emb_64.dat',
+                index_file_path=f'index_{args.size}m.ivf', new_db=True)
 
-    all_db = db.get_all_rows()
+    # all_db = db.get_all_rows()
 
-    res = run_queries(db, all_db, 5, 10)
-    print(eval(res))
+    # res = run_queries(db, all_db, 5, 10)
+    # print(eval(res))
