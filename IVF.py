@@ -2,15 +2,12 @@ import numpy as np
 import struct
 import heapq
 from sklearn.cluster import MiniBatchKMeans
-import os
 
 DIMENSION = 64
-MAX_WORKERS = os.cpu_count()
 
 class BasicIVFIndexer:
-    def __init__(self, n_clusters=1000, n_probe=10):
+    def __init__(self, n_clusters=1000):
         self.n_clusters = n_clusters
-        self.n_probe = n_probe
         self.centroids = None
         self.vector_ids = None
 
@@ -154,11 +151,9 @@ class BasicIVFIndexer:
         
         with open(filename, "wb") as f:
             # Header with version info
-            f.write(struct.pack("IIII", 
-                self.n_clusters, 
-                self.n_probe, 
+            f.write(struct.pack("II", 
+                self.n_clusters,
                 self.centroids.shape[1],
-                1  # Version number for future compatibility
             ))
             
             # Reserve space for offsets
@@ -281,11 +276,9 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
-        header = struct.unpack("IIII", f.read(16))
+        header = struct.unpack("II", f.read(8))
         n_clusters = header[0]
-        n_probe_stored = header[1]
-        dim = header[2]
-        # header[3] is version, currently unused
+        dim = header[1]
         
         centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
         f.seek(lengths_offset)

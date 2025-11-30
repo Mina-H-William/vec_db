@@ -119,9 +119,8 @@ class VecDB:
                 os.remove(self.index_path)
         
         n_clusters = self.db_size // 1000
-        n_probe = 10 + (self.db_size // 1000000) * 2
 
-        self.ivf = BasicIVFIndexer(n_clusters=n_clusters, n_probe=n_probe)
+        self.ivf = BasicIVFIndexer(n_clusters=n_clusters)
         vectors = self.get_all_rows()
         self.ivf.Build(vectors)
         self.ivf.write_index(self.index_path)
