@@ -92,7 +92,6 @@ class BasicIVFIndexer:
 ################################################################################
 
 def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    """Generator - loads centroids in small batches"""
     with open(filename, "rb") as f:
         f.seek(centroid_offset)
 
@@ -104,7 +103,6 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
 
 
 def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
-    """Load single cluster IDs - minimal RAM"""
     with open(filename, "rb") as f:
         start = lengths_array[:cluster_index].sum()
         length = lengths_array[cluster_index]
@@ -120,10 +118,6 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
 ################################################################################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    """
-    TINY OPTIMIZATION: Pre-allocate scores array instead of list.extend()
-    Saves ~50-100ms, no extra RAM
-    """
     # Pre-allocate scores array (saves time vs list appends)
     all_scores = np.empty(n_clusters, dtype=np.float32)
     
@@ -141,19 +135,6 @@ def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_cluster
 
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
-    """
-    MINIMAL OPTIMIZATIONS to your original code:
-    1. Track min_score to avoid heap[0][0] lookups (small speedup)
-    2. Use vectorized norm + matmul (you already had this)
-    3. Skip early if score can't beat minimum (small speedup)
-    4. CORRECT TIE-BREAKING: For equal scores, prefer smaller IDs
-    
-    Keeps batch_size=16 for minimal RAM!
-    
-    Heap stores: (score, -vid) so that equal scores prefer SMALLER vid
-    (min-heap keeps smallest -vid = largest vid, but we want smallest vid)
-    Actually, we use (score, vid) but handle ties in comparison logic.
-    """
     heap = []
     min_score = -np.inf
     min_vid = np.inf  # Track the vid at min_score for tie-breaking
@@ -197,14 +178,6 @@ def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
 ################################################################################
 
 def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_for_vectors=16):
-    """
-    Slightly optimized search - respects 1MB RAM limit
-    
-    Changes from your original:
-    1. Pre-allocate centroid scores array (small speedup, no extra RAM)
-    2. Track min_score in heap (small speedup, no extra RAM)
-    3. Pre-allocate cluster IDs array (moderate speedup, no extra RAM)
-    """
     filename = vec_db.index_path
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
