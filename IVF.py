@@ -2,119 +2,192 @@ import numpy as np
 import struct
 import heapq
 from sklearn.cluster import MiniBatchKMeans
+import os
 
 DIMENSION = 64
+MAX_WORKERS = os.cpu_count()
 
 class BasicIVFIndexer:
     def __init__(self, n_clusters=1000, n_probe=10):
         self.n_clusters = n_clusters
-        self.n_probe = n_probe  # Number of clusters to search
-
+        self.n_probe = n_probe
         self.centroids = None
         self.vector_ids = None
 
     def Build(self, vectors, batch_size=100_000):
-        """
-        vectors: array-like or memmap supporting slicing: vectors[start:end]
-        vector_ids: optional sequence of ids
-        If dataset is large (>= use_minibatch_threshold) or vectors is a memmap,
-        use MiniBatchKMeans and batch normalization to avoid full in-RAM copies.
-        """
-        print("Building IVF index...")
+        print("Building optimized IVF index...")
         vector_ids = np.arange(len(vectors))
-
         n_samples = len(vectors)
 
-        labels = self.build_index_with_batchs(vectors, n_samples, batch_size)
+        # Pre-normalize all vectors ONCE (saves repeated normalization)
+        print("Pre-normalizing vectors...")
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-12
+        vectors_normalized = vectors / norms
+        
+        # Build with more epochs for better centroids
+        labels = self.build_index_optimized(vectors_normalized, n_samples, batch_size)
 
         # Build vector ID lists per cluster
         self.vector_ids = [[] for _ in range(self.n_clusters)]
         for vid, lbl in zip(vector_ids, labels):
             self.vector_ids[int(lbl)].append(int(vid))
-
+        
+        # Check cluster balance
+        cluster_sizes = [len(lst) for lst in self.vector_ids]
+        print(f"Cluster stats: min={min(cluster_sizes)}, max={max(cluster_sizes)}, avg={sum(cluster_sizes)/len(cluster_sizes):.1f}")
+        
+        # Rebalance if needed (split large clusters)
+        self.rebalance_clusters(vectors_normalized, threshold=3.0)
+        
         print("IVF index built successfully.")
 
-    def build_index_with_batchs(self, vectors, n_samples, batch_size, epochs=5):
-        mbk = MiniBatchKMeans(n_clusters=self.n_clusters,
-                                  batch_size=batch_size,
-                                  random_state=0,
-                                  n_init='auto')
+    def build_index_optimized(self, vectors_normalized, n_samples, batch_size, epochs=10):
+        # Use larger batch for more stable centroids
+        effective_batch_size = min(batch_size * 2, n_samples // 10)
         
-        # Partial fit on normalized batches
+        mbk = MiniBatchKMeans(
+            n_clusters=self.n_clusters,
+            batch_size=effective_batch_size,
+            max_iter=300,  # More iterations per batch
+            random_state=0,
+            n_init='auto',
+            reassignment_ratio=0.01,  # Better handling of empty clusters
+            max_no_improvement=10
+        )
+        
+        # Train with MORE epochs for better convergence
         for epoch in range(epochs):
-            for start in range(0, n_samples, batch_size):
-                end = min(start + batch_size, n_samples)
-                print(f"Processing epoch {epoch}, batch {start} to {end}")
-                batch = vectors[start:end]
-                # batch may be a view; normalize without creating a huge extra copy
-                norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
-                batch_norm = batch / norms  # small temporary per-batch
-                mbk.partial_fit(batch_norm)
+            print(f"Training epoch {epoch+1}/{epochs}")
+            for start in range(0, n_samples, effective_batch_size):
+                end = min(start + effective_batch_size, n_samples)
+                batch = vectors_normalized[start:end]
+                mbk.partial_fit(batch)
 
-        # Save centroids
+        # Get and normalize centroids
         self.centroids = mbk.cluster_centers_
         self.centroids /= (np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12)
 
-        # Assign labels in batches (predict on normalized batches)
+        # Assign final labels
+        print("Assigning final labels...")
         labels = np.empty(n_samples, dtype=np.int32)
         for start in range(0, n_samples, batch_size):
-            print(f"Assigning labels for batch {start} to {min(start + batch_size, n_samples)}")
             end = min(start + batch_size, n_samples)
-            batch = vectors[start:end]
-            norms = np.linalg.norm(batch, axis=1, keepdims=True) + 1e-12
-            batch_norm = batch / norms
-            labels[start:end] = mbk.predict(batch_norm)
+            batch = vectors_normalized[start:end]
+            labels[start:end] = mbk.predict(batch)
 
         return labels
+    
+    def rebalance_clusters(self, vectors_normalized, threshold=3.0):
+        """
+        Split oversized clusters for faster search
+        
+        If a cluster is >threshold times the average size, split it.
+        This reduces search time in large clusters.
+        """
+        cluster_sizes = np.array([len(lst) for lst in self.vector_ids])
+        avg_size = cluster_sizes.mean()
+        max_size = avg_size * threshold
+        
+        large_clusters = np.where(cluster_sizes > max_size)[0]
+        
+        if len(large_clusters) == 0:
+            print("No rebalancing needed.")
+            return
+        
+        print(f"Rebalancing {len(large_clusters)} oversized clusters...")
+        
+        new_vector_ids = list(self.vector_ids)
+        new_centroids = list(self.centroids)
+        
+        for cluster_idx in large_clusters:
+            vec_ids = np.array(self.vector_ids[cluster_idx])
+            
+            if len(vec_ids) < 2:
+                continue
+            
+            # Get vectors in this cluster
+            cluster_vecs = vectors_normalized[vec_ids]
+            
+            # Split into 2 sub-clusters using k-means
+            from sklearn.cluster import KMeans
+            km = KMeans(n_clusters=2, random_state=0, n_init=10)
+            sub_labels = km.fit_predict(cluster_vecs)
+            
+            # Update cluster assignments
+            sub0_ids = vec_ids[sub_labels == 0].tolist()
+            sub1_ids = vec_ids[sub_labels == 1].tolist()
+            
+            # Replace original cluster
+            new_vector_ids[cluster_idx] = sub0_ids
+            new_centroids[cluster_idx] = km.cluster_centers_[0]
+            
+            # Add new cluster
+            new_vector_ids.append(sub1_ids)
+            new_centroids.append(km.cluster_centers_[1])
+        
+        # Update instance variables
+        self.vector_ids = new_vector_ids
+        self.centroids = np.array(new_centroids)
+        self.n_clusters = len(self.centroids)
+        
+        # Normalize new centroids
+        self.centroids /= (np.linalg.norm(self.centroids, axis=1, keepdims=True) + 1e-12)
+        
+        print(f"Rebalanced to {self.n_clusters} clusters (was {len(large_clusters)} oversized)")
 
     def write_index(self, filename):
-        vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.uint32)  # Use uint32
+        """Write optimized index with metadata for faster search"""
+        vector_ids_lengths = np.array([len(lst) for lst in self.vector_ids], dtype=np.uint32)
 
-        # sort each list in vectorIds 
-        for lst in self.vector_ids:
+        # Sort each list AND store cluster statistics
+        cluster_stats = []
+        for i, lst in enumerate(self.vector_ids):
             lst.sort()
+            # Store cluster metadata (can help with search optimization)
+            cluster_stats.append({
+                'size': len(lst),
+                'min_id': lst[0] if lst else 0,
+                'max_id': lst[-1] if lst else 0
+            })
 
         vector_ids_flat = np.concatenate(self.vector_ids) if any(self.vector_ids) else np.array([], dtype=np.uint32)
         
         with open(filename, "wb") as f:
-            # 1. Header (reduced size)
-            f.write(struct.pack("III", self.n_clusters, self.n_probe, self.centroids.shape[1]))
+            # Header with version info
+            f.write(struct.pack("IIII", 
+                self.n_clusters, 
+                self.n_probe, 
+                self.centroids.shape[1],
+                1  # Version number for future compatibility
+            ))
             
-            # Reserve space for offsets (4 bytes each instead of 8)
+            # Reserve space for offsets
             f.write(b"\x00" * 4 * 3)
             
             centroid_offset = f.tell()
-            f.write(self.centroids.astype(np.float32).tobytes())  # 4 bytes per element
+            f.write(self.centroids.astype(np.float32).tobytes())
             
-            # 3. Lengths as uint32 instead of int64 (50% reduction)
             lengths_offset = f.tell()
-            f.write(vector_ids_lengths.astype(np.uint32).tobytes())  # 4 bytes per length
+            f.write(vector_ids_lengths.astype(np.uint32).tobytes())
             
-            # 4. Vector IDs - biggest savings here
             ids_offset = f.tell()
+            f.write(vector_ids_flat.astype(np.uint32).tobytes())
             
-            # Since IDs are 1-20M, we can use uint32 (4 bytes) instead of int64 (8 bytes)
-            f.write(vector_ids_flat.astype(np.uint32).tobytes())  # 4 bytes per ID
-            
-            # 5. Write offsets as uint32
-            f.seek(4 * 3)  # After header
+            # Write offsets
+            f.seek(4 * 4)  # After header
             f.write(struct.pack("III", centroid_offset, lengths_offset, ids_offset))
         
-        print("Optimized index saved to", filename)
+        print(f"Optimized index saved: {self.n_clusters} clusters, {len(vector_ids_flat)} vectors")
+        
+        # Print cluster quality metrics
+        sizes = [s['size'] for s in cluster_stats]
+        print(f"Cluster quality: min={min(sizes)}, max={max(sizes)}, "
+              f"avg={np.mean(sizes):.1f}, std={np.std(sizes):.1f}")
 
 
 ################################################################################
-
-def cal_score(vec1, vec2):
-    # Compute cosine similarity and return a plain Python float.
-    # Guard against zero norms to avoid division-by-zero and return 0.0 in that case.
-    dot_product = np.dot(vec1, vec2)
-    # norm_vec1 = np.linalg.norm(vec1)
-    # norm_vec2 = np.linalg.norm(vec2)
-    return dot_product
-
-
-####################### functions for load index data from file   ################
+# EFFICIENT get_rows() implementation for VecDB
+################################################################################
 
 def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
     with open(filename, "rb") as f:
@@ -122,65 +195,85 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
 
         for start in range(0, n_clusters, batch_size):
             end = min(batch_size, n_clusters - start)
-            bytes_to_read = end * dim * 4  # float32 size
+            bytes_to_read = end * dim * 4
             batch = np.frombuffer(f.read(bytes_to_read), dtype=np.float32)
             yield start, batch.reshape(end, dim)
-    
+
+
 def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
     with open(filename, "rb") as f:
-
-        # Get offset of this cluster inside ids
-        start = lengths_array[:cluster_index].sum().astype(np.uint32)
+        start = lengths_array[:cluster_index].sum()
         length = lengths_array[cluster_index]
 
-        # Read that slice only
         f.seek(ids_offset + start * 4)
         data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
 
         return data
 
 
-####################### functions for processing search functions   ################
+################################################################################
+# OPTIMIZED FUNCTIONS - TINY IMPROVEMENTS WITHOUT BREAKING RAM
+################################################################################
 
 def get_nearest_centroids(filename, query_vector, n_probe, batch_size, n_clusters, dim, centroid_offset):
-    scores = []
-
+    # Pre-allocate scores array (saves time vs list appends)
+    all_scores = np.empty(n_clusters, dtype=np.float32)
+    
+    idx = 0
     for _, batch in load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-        # batch shape: (batch_size, dim)
-        scores.extend(batch @ query_vector)
+        # Compute scores for batch
+        batch_scores = batch @ query_vector
+        batch_size_actual = len(batch_scores)
+        all_scores[idx:idx + batch_size_actual] = batch_scores
+        idx += batch_size_actual
 
-    scores = np.array(scores, dtype=np.float32)
-
-    return np.sort(np.argpartition(-scores, n_probe - 1)[:n_probe])
-
+    # Get top n_probe and sort
+    top_indices = np.argpartition(-all_scores, n_probe - 1)[:n_probe]
+    return np.sort(top_indices)
 
 
 def get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size):
-    candidates = []
-
-    # Process in batches to limit memory usage
+    heap = []
+    min_score = -np.inf
+    min_vid = np.inf  # Track the vid at min_score for tie-breaking
+    
+    # Process in small batches (batch_size=16 for minimal RAM)
     for start in range(0, len(all_vec_ids), batch_size):
-        vec_ids = all_vec_ids[start:start+batch_size]
-
+        vec_ids = all_vec_ids[start:start + batch_size]
+        
+        # Get vectors
         vecs = vec_db.get_rows(vec_ids)
-
-        vecs = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
-
+        
+        # Vectorized normalization (fast)
+        vecs /= (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12)
+        
+        # Vectorized scoring (fast)
         scores = vecs @ query_vector
-
-        for vid, score in zip(vec_ids, scores):
-            item = (score, vid)
-
-            if len(candidates) < k:
-                heapq.heappush(candidates, item)
+        
+        # Update heap
+        for i in range(len(scores)):
+            score = float(scores[i])
+            vid = int(vec_ids[i])
+            
+            if len(heap) < k:
+                heapq.heappush(heap, (score, vid))
+                if len(heap) == k:
+                    min_score = heap[0][0]
+                    min_vid = heap[0][1]
             else:
-                if item[0] > candidates[0][0] or (item[0] == candidates[0][0] and item[1] < candidates[0][1]):
-                    heapq.heappushpop(candidates, item)
+                # Check if we should replace the minimum
+                # Replace if: score > min_score OR (score == min_score AND vid < min_vid)
+                if score > min_score or (score == min_score and vid < min_vid):
+                    heapq.heappushpop(heap, (score, vid))
+                    min_score = heap[0][0]
+                    min_vid = heap[0][1]
+    
+    return heap
 
-    return candidates
 
-
-######################## Main search function ################
+################################################################################
+# MAIN SEARCH - MINIMAL CHANGES
+################################################################################
 
 def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_for_vectors=16):
     filename = vec_db.index_path
@@ -188,29 +281,49 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
 
     # ---- 1. Read header ----
     with open(filename, "rb") as f:
-        n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
+        header = struct.unpack("IIII", f.read(16))
+        n_clusters = header[0]
+        n_probe_stored = header[1]
+        dim = header[2]
+        # header[3] is version, currently unused
+        
         centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
         f.seek(lengths_offset)
         lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
 
-    n_probe = 20 + (n_clusters // 1_000)
+    # n_probe scales with n_clusters: 6 for 1K, 8 for 10K, 10 for 20K
+    n_probe = int(6 + (n_clusters - 1000) * 4 / 19000)
 
-    # ---- 2. Find nearest centroids ----
-    selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size_for_centroids, n_clusters, dim, centroid_offset)
+    # ---- 2. Find nearest centroids (tiny optimization) ----
+    selected_centroids = get_nearest_centroids(
+        filename, query_vector, n_probe, 
+        batch_size_for_centroids, n_clusters, dim, centroid_offset
+    )
 
-    # ---- 3. Search actual vectors in selected clusters ----
-
-    all_vec_ids = []
+    # ---- 3. Load cluster IDs (OPTIMIZED - single allocation) ----
+    # Calculate total size needed
+    total_length = lengths_array[selected_centroids].sum()
+    
+    if total_length == 0:
+        return []
+    
+    # Pre-allocate result array
+    all_vec_ids = np.empty(total_length, dtype=np.uint32)
+    
+    # Fill in one pass
+    write_pos = 0
     for cid in selected_centroids:
         vec_ids = load_cluster_ids(filename, cid, lengths_array, ids_offset)
-        all_vec_ids.extend(vec_ids)
+        length = len(vec_ids)
+        all_vec_ids[write_pos:write_pos + length] = vec_ids
+        write_pos += length
     
-    all_vec_ids = np.array(all_vec_ids, dtype=np.uint32)
     all_vec_ids.sort()
 
-
-    # ---- 4. Get nearest k vectors among candidates ----
-    candidates = get_nearest_k_vectors(vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors)
+    # ---- 4. Get nearest k vectors (minimal changes to your original) ----
+    candidates = get_nearest_k_vectors(
+        vec_db, query_vector, all_vec_ids, k, batch_size_for_vectors
+    )
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
