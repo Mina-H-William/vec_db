@@ -193,7 +193,7 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
         f.seek(lengths_offset)
         lengths_array = np.frombuffer(f.read(n_clusters * 4), dtype=np.uint32)
 
-    n_probe = 7 + (n_clusters // 3000)
+    n_probe = 8 + (n_clusters // 5000)
 
     # ---- 2. Find nearest centroids ----
     selected_centroids = get_nearest_centroids(filename, query_vector, n_probe, batch_size_for_centroids, n_clusters, dim, centroid_offset)
