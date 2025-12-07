@@ -135,8 +135,8 @@ def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
         length = lengths_array[cluster_index]
 
         # Read that slice only
-        f.seek(ids_offset + start * 4)
-        data = np.frombuffer(f.read(length * 4), dtype=np.uint32)
+        f.seek(ids_offset + start * 3)
+        data = np.frombuffer(f.read(length * 3), dtype=np.uint32)
 
         return data
 
