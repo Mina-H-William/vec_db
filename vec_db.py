@@ -70,38 +70,38 @@ class VecDB:
         return np.array(mmap_vectors[row_nums - row_nums[0]])
         # return np.array(mmap_vectors[row_nums])
 
-    # def get_rows_efficient(self, row_nums):
-    #     # Calculate density: ratio of requested rows to span
-    #     span = row_nums[-1] - row_nums[0] + 1
-    #     density = len(row_nums) / span
+    def get_rows_efficient(self, row_nums):
+        # Calculate density: ratio of requested rows to span
+        # span = row_nums[-1] - row_nums[0] + 1
+        # density = len(row_nums) / span
         
-    #     # If density > 0.5 (more than half the rows needed), load contiguous block
-    #     if density > 0.5:
-    #         # DENSE: Load contiguous block (your current approach - FAST!)
-    #         start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
-    #         mmap_vectors = np.memmap(
-    #             self.db_path,
-    #             dtype=np.float32,
-    #             mode='r',
-    #             offset=start_offset,
-    #             shape=(span, DIMENSION)
-    #         )
-    #         return np.array(mmap_vectors[row_nums - row_nums[0]])
+        # If density > 0.5 (more than half the rows needed), load contiguous block
+        # if density > 0.5:
+        #     # DENSE: Load contiguous block (your current approach - FAST!)
+        #     start_offset = np.int64(row_nums[0]) * DIMENSION * ELEMENT_SIZE
+        #     mmap_vectors = np.memmap(
+        #         self.db_path,
+        #         dtype=np.float32,
+        #         mode='r',
+        #         offset=start_offset,
+        #         shape=(span, DIMENSION)
+        #     )
+        #     return np.array(mmap_vectors[row_nums - row_nums[0]])
         
-    #     else:
-    #         # SPARSE: Load individually (safer for RAM)
-    #         result = np.empty((len(row_nums), DIMENSION), dtype=np.float32)
+        # else:
+            # SPARSE: Load individually (safer for RAM)
+        result = np.empty((len(row_nums), DIMENSION), dtype=np.float32)
             
-    #         with open(self.db_path, 'rb') as f:
-    #             for i, row_num in enumerate(row_nums):
-    #                 offset = np.int64(row_num) * DIMENSION * ELEMENT_SIZE
-    #                 f.seek(offset)
-    #                 result[i] = np.frombuffer(
-    #                     f.read(DIMENSION * ELEMENT_SIZE), 
-    #                     dtype=np.float32
-    #                 )
-            
-    #         return result
+        with open(self.db_path, 'rb', buffering = False) as f:
+            for i, row_num in enumerate(row_nums):
+                offset = np.int64(row_num) * DIMENSION * ELEMENT_SIZE
+                f.seek(offset)
+                result[i] = np.frombuffer(
+                    f.read(DIMENSION * ELEMENT_SIZE), 
+                    dtype=np.float32
+                )
+        
+        return result
 
     def get_all_rows(self) -> np.ndarray:
         # Take care this load all the data in memory
