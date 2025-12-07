@@ -2,6 +2,7 @@ import numpy as np
 import struct
 import heapq
 from sklearn.cluster import MiniBatchKMeans
+import gc
 
 DIMENSION = 64
 
@@ -81,7 +82,7 @@ class BasicIVFIndexer:
             f.write(struct.pack("III", self.n_clusters, self.n_probe, self.centroids.shape[1]))
             
             # Reserve space for offsets (4 bytes each instead of 8)
-            f.write(b"\x00" * 4 * 3)
+            f.write(b"\x00" * 3 * 3)
             
             centroid_offset = f.tell()
             f.write(self.centroids.astype(np.float32).tobytes())  # 4 bytes per element
@@ -97,7 +98,7 @@ class BasicIVFIndexer:
             f.write(vector_ids_flat.astype(np.uint32).tobytes())  # 4 bytes per ID
             
             # 5. Write offsets as uint32
-            f.seek(4 * 3)  # After header
+            f.seek(3 * 3)  # After header
             f.write(struct.pack("III", centroid_offset, lengths_offset, ids_offset))
         
         print("Optimized index saved to", filename)
@@ -214,4 +215,5 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
 
     # ---- 5. Final results ----
     results = sorted(candidates, key=lambda x: (-x[0], x[1]))
+    gc.collect()
     return [vid for _, vid in results]
