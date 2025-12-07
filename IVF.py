@@ -118,7 +118,7 @@ def cal_score(vec1, vec2):
 ####################### functions for load index data from file   ################
 
 def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offset):
-    with open(filename, "rb") as f:
+    with open(filename, "rb", buffering = False) as f:
         f.seek(centroid_offset)
 
         for start in range(0, n_clusters, batch_size):
@@ -128,7 +128,7 @@ def load_centroids_batches(filename, batch_size, n_clusters, dim, centroid_offse
             yield start, batch.reshape(end, dim)
     
 def load_cluster_ids(filename, cluster_index, lengths_array, ids_offset):
-    with open(filename, "rb") as f:
+    with open(filename, "rb", buffering = False) as f:
 
         # Get offset of this cluster inside ids
         start = lengths_array[:cluster_index].sum().astype(np.uint32)
@@ -188,7 +188,7 @@ def search(vec_db, query_vector, k=5, batch_size_for_centroids=2000, batch_size_
     query_vector = query_vector / (np.linalg.norm(query_vector) + 1e-12)
 
     # ---- 1. Read header ----
-    with open(filename, "rb") as f:
+    with open(filename, "rb", buffering = False) as f:
         n_clusters, n_probe, dim = struct.unpack("III", f.read(12))
         centroid_offset, lengths_offset, ids_offset = struct.unpack("III", f.read(12))
         f.seek(lengths_offset)
